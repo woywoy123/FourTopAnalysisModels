@@ -5,8 +5,9 @@ from EventFeatureTemplate import ApplyFeatures
 from BasicBaseLine import BasicBaseLineTruthJet
 
 Submission = Condor()
-Submission.ProjectName = "BasicBaseLineTruthJetFULL"
-GeneralDir = "<Populate>"
+Submission.ProjectName = "BasicBaseLineTruthJetTest"
+GeneralDir = "/nfs/dust/atlas/user/<...>/SamplesGNN/SmallSample/"
+#GeneralDir = "/nfs/dust/atlas/user/<...>/SamplesGNN/CustomAnalysisTopOutput/"
 
 # ====== Event Loader ======== #
 ttbar = Analysis()
@@ -39,11 +40,10 @@ zmumu.CompileSingleThread = False
 zmumu.CPUThreads = 8
 zmumu.EventCache = True
 zmumu.InputSample("Zmumu", GeneralDir + "Zmumu")
-
+Submission.AddJob("Zmumu", zmumu, "64GB", "24h")
 
 # ====== Data Loader ======== #
 ttbarData = Analysis()
-ttbarData.ProjectName = "BaseLineTopAnalysis"
 ttbarData.EventGraph = EventGraphTruthJetLepton
 ttbarData.DataCache = True
 ApplyFeatures(ttbarData)
@@ -63,7 +63,6 @@ bsm4topData.DataCache = True
 ApplyFeatures(bsm4topData)
 bsm4topData.DataCacheOnlyCompile = ["BSM4Top"]
 Submission.AddJob("Data_BSM4Top", bsm4topData, "4GB", "24h", ["BSM4Top"])
-
 
 ZmumuData = Analysis()
 ZmumuData.EventGraph = EventGraphTruthJetLepton

@@ -46,14 +46,14 @@ An additional MLP (```_node_m```) uses the aggregated incoming edge information 
 - ```_Node```: 7 - 256 - 1024 - 2048 
 - ```_Edge```: 2 - 256 - 1024 - 2048 
 - ```_mass```: 1 - 1024 - 1024 - 2048 
-- ```_node_m```: 4*2048 - 1024 - 2048 
+- ```_node_m```: 4x2048 - 1024 - 2048 
 - ```_mass```: 8 - 256 - 256 - 256 - 2 
 
 ##### Non adjustable bias layers. 
-- ```_isedge```: 2*2048 -> 0.5*2048 -> ReLU -> 0.5*2048 -> 2
-- ```_istop```:  2*2048 -> 0.5*2048 -> ReLU -> 0.5*2048 -> 2
-- ```_ResSw```:  2048 -> 0.5*2048 -> ReLU -> 0.5*2048 -> 2
-- ```_fromRes```: 3*2048 -> 0.5*2048 -> ReLU -> 0.5*2048 -> 2
+- ```_isedge```: 2x2048 -> 0.5x2048 -> ReLU -> 0.5x2048 -> 2
+- ```_istop```:  2x2048 -> 0.5x2048 -> ReLU -> 0.5x2048 -> 2
+- ```_ResSw```:  2048 -> 0.5x2048 -> ReLU -> 0.5x2048 -> 2
+- ```_fromRes```: 3x2048 -> 0.5x2048 -> ReLU -> 0.5x2048 -> 2
 
 ## Current Training Schedule
 - LR: Learning Rate 
