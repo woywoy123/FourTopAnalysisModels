@@ -3,8 +3,6 @@ from torch_geometric.nn import MessagePassing
 from torch.nn import Sequential as Seq, Linear, ReLU, Sigmoid, Tanh
 from LorentzVector import *
 from torch_geometric.utils import *
-from torch.nn.init import xavier_uniform 
-
 
 def MakeMLP(lay):
     out = []
@@ -12,52 +10,6 @@ def MakeMLP(lay):
         x1, x2 = lay[i], lay[i+1]
         out += [Linear(x1, x2)]
     return Seq(*out)
-
-#class BasicBaseLineTruthChildren(MessagePassing):
-#
-#    def __init__(self):
-#        super().__init__(aggr = "max")
-#        
-#        self._edge = MakeMLP([13, 256, 256, 256, 2])
-#    
-#    def forward(self, edge_index, N_eta, N_energy, N_pT, N_phi, num_nodes, i, ni):
-#        device = N_eta.device
-#        Pmu = torch.cat([N_pT, N_eta, N_phi, N_energy], dim = 1)
-#        Mass = MassFromPtEtaPhiE(Pmu)/1000
-#        
-#        self.O_Edge = self._Edge(edge_index, Pmu, Mass)
-#        self.O_FromRes = self._Res(edge_index, Pmu, Mass)
-#        
-#        # Collect some information about the lower layers that can be used for global context
-#        n_nodes = (num_nodes/i.shape[0]).to(dtype = torch.int)
-#        nodes = torch.zeros((i.shape[0], 1), device = device, dtype = torch.int)
-#        
-#        # Collect the number of nodes in batch: batch x 1
-#        nodes[torch.arange(i.shape[0])] = n_nodes
-#       
-#        # Collect the MLP for the resonance: batch x 1, batch x 2
-#        NResNodes = self.O_FromRes.max(1)[1].view(-1, n_nodes).sum(dim = 1)
-#        NResNodes_mlp = self.O_FromRes.view(i.shape[0], -1, 2).sum(dim = 1)
-#        
-#        # Same as above just with the edges 
-#        NEdges = self.O_Edge.max(1)[1].view(i.shape[0], -1, n_nodes).sum(dim = 1).sum(dim = 1)
-#        NEdges_mlp = self.O_Edge.view(i.shape[0], -1, 2).sum(1)
-#        
-#        # Get Mass and Four Vector of Event
-#        Pmu_Event = Pmu.view(i.shape[0], -1, Pmu.shape[1]).sum(dim = 1)
-#        Mass_Event = MassFromPtEtaPhiE(Pmu_Event)/1000
-#        
-#        NResNodes =  NResNodes.view(-1, 1)
-#        NResNodes =  NResNodes_mlp.view(-1, 2)
-#        NEdges =  NEdges.view(-1, 1)
-#        NEdges_mlp =  NEdges_mlp.view(-1, 2) 
-#        Pmu_Event =  Pmu_Event.view(-1, 4) 
-#        Mass_Event =  Mass_Event.view(-1, 1)
-#        
-#        ev = torch.cat([nodes, NResNodes, NResNodes_mlp, NEdges, NEdges_mlp, Pmu_Event, Mass_Event], dim =1)
-#        self.O_SignalSample = self._edge(ev)
-#
-#        return self.O_Edge, self.O_FromRes
 
 class BasicBaseLineTruthJet(MessagePassing):
 
@@ -70,8 +22,6 @@ class BasicBaseLineTruthJet(MessagePassing):
                 x1, x2 = lay[i], lay[i+1]
                 out += [Linear(x1, x2)]
             return Seq(*out)
-
-
 
         self.O_edge = None
         self.L_edge = "CEL"
