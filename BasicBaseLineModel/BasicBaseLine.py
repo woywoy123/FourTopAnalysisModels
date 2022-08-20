@@ -16,13 +16,6 @@ class BasicBaseLineTruthJet(MessagePassing):
     def __init__(self):
         super().__init__(aggr = None, flow = "target_to_source")
         
-        def MakeMLP(lay):
-            out = []
-            for i in range(len(lay)-1):
-                x1, x2 = lay[i], lay[i+1]
-                out += [Linear(x1, x2)]
-            return Seq(*out)
-
         self.O_edge = None
         self.L_edge = "CEL"
         self.C_edge = True
