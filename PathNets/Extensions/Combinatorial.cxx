@@ -3,6 +3,7 @@
 #include <iostream>
 
 using namespace torch::indexing; 
+
 void Combinatorial(int n, int k, int num, std::vector<torch::Tensor>* out, torch::TensorOptions options, torch::Tensor msk)
 { 
 	if (n == 0)
@@ -49,7 +50,7 @@ torch::Tensor MassFromPxPyPzE(torch::Tensor v)
   return torch::sqrt(s2.abs()); 
 }
 
-torch::Tensor PathMassCPU(torch::Tensor AdjMatrix, torch::Tensor FourVector)
+torch::Tensor PathVectorCPU(torch::Tensor AdjMatrix, torch::Tensor FourVector)
 {
 	std::vector<torch::Tensor> MassCombi; 
 	for (unsigned int i = 0; i < AdjMatrix.sizes()[0]; ++i)
@@ -57,12 +58,18 @@ torch::Tensor PathMassCPU(torch::Tensor AdjMatrix, torch::Tensor FourVector)
 		torch::Tensor x = torch::sum(FourVector.index({AdjMatrix[i] == 1}), {0});
 		MassCombi.push_back(x);
 	}
-	return MassFromPxPyPzE(torch::stack(MassCombi));
+	return torch::stack(MassCombi);
+}
+
+torch::Tensor PathMassCPU(torch::Tensor AdjMatrix, torch::Tensor FourVector)
+{
+	return MassFromPxPyPzE(PathVectorCPU(AdjMatrix, FourVector)); 
 }
 
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
   m.def("PathCombinatorial", &PathCombinatorial, "Path Combinatorial");
-  m.def("PathMassCPU", &PathMassCPU, "Invariant mass of path given the four vectors");
+  m.def("PathVector", &PathVectorCPU, "Summation of four vectors");
+  m.def("PathMass", &PathMassCPU, "Invariant Mass"); 
 }
