@@ -31,7 +31,7 @@ def PathNetsDEBUG():
     #PickleObject(samples[19][0], "19")
     k = 19
     kill = {}
-    kill |= {"from_top" : "C"}
+    kill |= {"edge" : "C"}
     #kill |= {"from_res" : "C"}
     #kill |= {"signal_sample": "C"}
     #kill |= {"from_top": "C"}

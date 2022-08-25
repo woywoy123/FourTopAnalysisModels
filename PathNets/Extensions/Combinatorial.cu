@@ -1,7 +1,7 @@
 #include <torch/extension.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
-
+#include <iostream>
 
 template <typename scalar_t>
 __device__ __forceinline__ void AggregatePath(
@@ -9,7 +9,6 @@ __device__ __forceinline__ void AggregatePath(
 		const scalar_t* FourVec, 
 		const scalar_t* Selector)
 {
-
 	(*Output) += (*FourVec)*(*Selector);  
 }
 
@@ -27,7 +26,10 @@ __global__ void SelectorKernel(
 	{
 		for (unsigned int i = 0; i < nodes; i++)
 		{
-			AggregatePath(&(Pmu[index][nd]), &(FV[i][nd]), &(PTH[index][i])); 
+			AggregatePath(
+				&(Pmu[index][nd]), 
+				&(FV[i][nd]), 
+				&(PTH[index][i])); 
 		}
 	}
 }
@@ -50,10 +52,25 @@ torch::Tensor PathVectorGPU(torch::Tensor AdjMatrix, torch::Tensor FourVector)
 			AdjMatrix.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(), 
 			FourVector.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
 			Pmu.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-			cmbi_l, nodes
+			cmbi_l, 
+			nodes
 		);
 	}));
 	return Pmu;
+}
+
+
+
+template <typename scalar_t>
+__device__ __forceinline__ void AggregatePath(
+		scalar_t* Output, 
+		const scalar_t* IncomingEdgeVector, 
+		const scalar_t* AdjMat, 
+		const scalar_t* edgeindex,
+		const int* node)
+{
+	if ((*node) != (*edgeindex) || (*AdjMat) == 0){return;}
+	(*Output) += (*IncomingEdgeVector);  
 }
 
 
@@ -66,18 +83,21 @@ __global__ void NodeSelectorKernel(
 	const size_t cmbi_l, 
 	const size_t nodes)
 {
-	const int adj = blockIdx.y*blockDim.y + threadIdx.y;
-	const int index = blockIdx.x*blockDim.x + threadIdx.x;
-	
-	if (index < cmbi_l)
+	const int adj = blockIdx.x*blockDim.x + threadIdx.x;
+	const int nod = blockIdx.y;
+	const int dim = blockIdx.z;
+	const int index = adj + nod*PTH.size(0);
+
+	if (index < cmbi_l && adj < PTH.size(0))
 	{
 		for (unsigned int i = 0; i < nodes; i++)
 		{
-			//const int edge_index = index - NodeIndex[index][0]*(PTH.size(0)-1) + i; 
-			//AggregatePath(&(Pmu[index][nd]), &(FV[edge_index][nd]), &(PTH[adj_index][i])); 
-			
-			printf("%d %d %d\n", index, PTH[adj][i], adj); 
-			Pmu[index][0] += PTH[adj][i];
+			AggregatePath(
+				&(Pmu[index][dim]), 
+				&(FV[i+nod*nodes][dim]), 
+				&(PTH[adj][i]), 
+				&(NodeIndex[i + nod*nodes][0]), 
+				&nod); 
 		}
 	}
 }
@@ -86,17 +106,16 @@ torch::Tensor IncomingEdgeVectorGPU(torch::Tensor AdjMatrix, torch::Tensor Incom
 {
 
 	torch::TensorOptions options = torch::TensorOptions().dtype(torch::kFloat).device(torch::kCUDA); 
-	const int edges = IncomingEdges.size(0); 
 	const int adj = AdjMatrix.size(0);
 	const int nodes = AdjMatrix.size(1);
+	const int threads = 1024;
+	const dim3 blocks((adj+threads-1)/threads, nodes, 4);
 
 	torch::Tensor Pmu = torch::zeros({adj*nodes, 4}, options); 
-	const int threads = 1024;
-	const dim3 blocks((Pmu.size(0) + threads -1) / threads, 4);
-
 	Index = Index.to(options);
 	IncomingEdges = IncomingEdges.to(options);
-	AdjMatrix = IncomingEdges.to(options);
+	AdjMatrix = AdjMatrix.to(options);
+
 	AT_DISPATCH_FLOATING_TYPES(torch::kFloat, "NodeSelectorKernel", ([&]
 	{
 		NodeSelectorKernel<scalar_t><<<blocks, threads>>>(
@@ -104,9 +123,31 @@ torch::Tensor IncomingEdgeVectorGPU(torch::Tensor AdjMatrix, torch::Tensor Incom
 			IncomingEdges.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
 			Index.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
 			Pmu.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-			Pmu.size(0), nodes
+			Pmu.size(0), 
+			nodes
 		);
 	})); 
-	return Pmu; 
 
+	return Pmu; 
+}
+
+
+
+//template <typename scalar_t>
+//__global__ void CombinatorialKernel(
+//
+//
+
+
+// Need to continue here. Write a non recursive binary combinatorial....
+torch::Tensor PathCombinatorialGPU(int n, int k, int len)
+{
+	const int threads = 1024; 
+	const dim3 blocks((n + threads -1)/threads, k); 
+
+	torch::TensorOptions options = torch::TensorOptions().dtype(torch::kInt).device(torch::kCUDA);
+	torch::Tensor Combi = torch::zeros({len, n}, options);
+	torch::Tensor MSK = torch::pow(2, torch::arange(n, options));
+
+	return torch::tensor({1, 2}, options); 
 }

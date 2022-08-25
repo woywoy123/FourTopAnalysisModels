@@ -21,7 +21,7 @@ void Combinatorial(int n, int k, int num, std::vector<torch::Tensor>* out, torch
 }
 
 
-torch::Tensor PathCombinatorial(int n, unsigned int max, std::string device)
+torch::Tensor PathCombinatorialCPU(int n, unsigned int max, std::string device)
 {
 	torch::TensorOptions options = torch::TensorOptions();
 	if (device == "cuda"){options = options.device(torch::kCUDA);}
@@ -69,7 +69,7 @@ torch::Tensor PathMassCPU(torch::Tensor AdjMatrix, torch::Tensor FourVector)
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-  m.def("PathCombinatorial", &PathCombinatorial, "Path Combinatorial");
+  m.def("PathCombinatorial", &PathCombinatorialCPU, "Path Combinatorial");
   m.def("PathVector", &PathVectorCPU, "Summation of four vectors");
   m.def("PathMass", &PathMassCPU, "Invariant Mass"); 
 }
