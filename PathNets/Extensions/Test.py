@@ -15,38 +15,43 @@ from PathNetOptimizer import *
 #print(PathVector(AdjM, TestVect))
 
 #
-#from PathNetOptimizerCUDA import * 
-#
-#n = 20
-#AdjM = PathCombinatorial(n, n, "cuda")
-#TestVect = torch.tensor([[i+1, i+1, i+1, i+1] for i in range(n)], device = "cuda")
-#new = torch.cat([TestVect]*n, dim = 0)
-#index = torch.tensor([[i] for i in range(n) for j in range(n)], device = "cuda")
-#
-#import time
-#ts_0 = time.time()
-#l = []
-#for i in range(n):
-#    for j in AdjM:
-#        l.append(sum(new[i*len(j):(i+1)*len(j)][j == 1]).tolist())
-#te_0 = time.time()
-#
-#
-#
-#    
-#
-#print("------")
-#ts_1 = time.time()
-#v = EdgeVector(AdjM, new, index)
-#te_1 = time.time()
-#
-#print("cpu", te_0 - ts_0, "cuda", te_1 - ts_1)
-#
-#for j, i in zip(torch.as_tensor(l), v):
-#    j, i = j.tolist(), i.tolist()
-#    assert i == j
+from PathNetOptimizerCUDA import * 
+from PathNetOptimizer import PathCombinatorial
+
+n = 5
+AdjM = PathCombinatorial(n, n, "cuda")
+TestVect = torch.tensor([[i+1, i+1, i+1, i+1] for i in range(n)], device = "cuda")
+new = torch.cat([TestVect]*n, dim = 0)
+index = torch.tensor([[i] for i in range(n) for j in range(n)], device = "cuda")
+
+import time
+ts_0 = time.time()
+l = []
+for i in range(n):
+    for j in AdjM:
+        l.append(sum(new[i*len(j):(i+1)*len(j)][j == 1]).tolist())
+te_0 = time.time()
 
 
+
+    
+
+print("------")
+ts_1 = time.time()
+
+
+print(AdjM, new, index)
+
+v = IncomingEdgeVector(AdjM, new, index)
+te_1 = time.time()
+
+print("cpu", te_0 - ts_0, "cuda", te_1 - ts_1)
+for j, i in zip(torch.as_tensor(l), v[0]):
+    j, i = j.tolist(), i.tolist()
+    assert i == j
+
+
+exit()
 from PathNetOptimizerCUDA import * 
 import time 
 

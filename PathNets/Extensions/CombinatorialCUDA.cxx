@@ -19,7 +19,7 @@ torch::Tensor MassFromPxPyPzE(torch::Tensor v)
 
 // CUDA forward declaration
 torch::Tensor PathVectorGPU(torch::Tensor AdjMatrix, torch::Tensor FourVector); 
-torch::Tensor IncomingEdgeVectorGPU(torch::Tensor AdjMatrix, torch::Tensor IncomingEdges, torch::Tensor Index);
+std::vector<torch::Tensor> IncomingEdgeVectorGPU(torch::Tensor AdjMatrix, torch::Tensor IncomingEdges, torch::Tensor Index);
 torch::Tensor PathCombinatorialGPU(const int n, torch::Tensor t);
 #define CHECK_CUDA(x) TORCH_CHECK(x.device().is_cuda(), "#x must be on CUDA")
 #define CHECK_CONTIGUOUS(x) TORCH_CHECK(x.is_contiguous(), "#x must be contiguous") 
@@ -40,22 +40,26 @@ torch::Tensor PathMassCUDA(torch::Tensor AdjMatrix, torch::Tensor FourVector)
 }
 
 
-torch::Tensor IncomingEdgeVectorCUDA(torch::Tensor AdjMatrix, torch::Tensor IncomingEdges, torch::Tensor Index)
+std::vector<torch::Tensor> IncomingEdgeVectorCUDA(torch::Tensor AdjMatrix, torch::Tensor IncomingEdges, torch::Tensor Index)
 {
 	CHECK_INPUT(AdjMatrix);
 	CHECK_INPUT(IncomingEdges);
 	CHECK_INPUT(Index);
 		
-	return IncomingEdgeVectorGPU(AdjMatrix, IncomingEdges, Index);
+	torch::TensorOptions options = torch::TensorOptions().dtype(torch::kLong); 
+	std::vector<torch::Tensor> V = IncomingEdgeVectorGPU(AdjMatrix, IncomingEdges, Index);
+	return {V[0], V[1].to(options)};
 }
 
-torch::Tensor IncomingEdgeMassCUDA(torch::Tensor AdjMatrix, torch::Tensor IncomingEdges, torch::Tensor Index)
+std::vector<torch::Tensor> IncomingEdgeMassCUDA(torch::Tensor AdjMatrix, torch::Tensor IncomingEdges, torch::Tensor Index)
 {
 	CHECK_INPUT(AdjMatrix);
 	CHECK_INPUT(IncomingEdges);
 	CHECK_INPUT(Index);
-		
-	return MassFromPxPyPzE(IncomingEdgeVectorGPU(AdjMatrix, IncomingEdges, Index));
+	
+	torch::TensorOptions options = torch::TensorOptions().dtype(torch::kLong); 
+	std::vector<torch::Tensor> V = IncomingEdgeVectorGPU(AdjMatrix, IncomingEdges, Index);
+	return {MassFromPxPyPzE(V[0]), V[1].to(options)};
 }
 
 

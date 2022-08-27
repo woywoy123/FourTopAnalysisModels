@@ -65,13 +65,16 @@ torch::Tensor PathVectorGPU(torch::Tensor AdjMatrix, torch::Tensor FourVector)
 template <typename scalar_t>
 __device__ __forceinline__ void AggregatePath(
 		scalar_t* Output, 
+		scalar_t* IncomingEdgeAdj, 
 		const scalar_t* IncomingEdgeVector, 
 		const scalar_t* AdjMat, 
 		const scalar_t* edgeindex,
-		const int* node)
+		const int* node, 
+		const int* adj)
 {
 	if ((*node) != (*edgeindex) || (*AdjMat) == 0){return;}
-	(*Output) += (*IncomingEdgeVector);  
+	(*Output) += (*IncomingEdgeVector); 
+	(*IncomingEdgeAdj) = (*adj);
 }
 
 
@@ -80,6 +83,7 @@ __global__ void NodeSelectorKernel(
 	const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> PTH, 
 	const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> FV, 
 	const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> NodeIndex, 
+	torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> Pmu_adj,
 	torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> Pmu,
 	const size_t cmbi_l, 
 	const size_t nodes)
@@ -94,16 +98,18 @@ __global__ void NodeSelectorKernel(
 		for (unsigned int i = 0; i < nodes; i++)
 		{
 			AggregatePath(
-				&(Pmu[index][dim]), 
+				&(Pmu[index][dim]),
+				&(Pmu_adj[index][0]),
 				&(FV[i+nod*nodes][dim]), 
 				&(PTH[adj][i]), 
 				&(NodeIndex[i + nod*nodes][0]), 
-				&nod); 
+				&nod,
+				&adj); 
 		}
 	}
 }
 
-torch::Tensor IncomingEdgeVectorGPU(torch::Tensor AdjMatrix, torch::Tensor IncomingEdges, torch::Tensor Index)
+std::vector<torch::Tensor> IncomingEdgeVectorGPU(torch::Tensor AdjMatrix, torch::Tensor IncomingEdges, torch::Tensor Index)
 {
 
 	torch::TensorOptions options = torch::TensorOptions().dtype(torch::kFloat).device(torch::kCUDA); 
@@ -113,6 +119,7 @@ torch::Tensor IncomingEdgeVectorGPU(torch::Tensor AdjMatrix, torch::Tensor Incom
 	const dim3 blocks((adj+threads-1)/threads, nodes, 4);
 
 	torch::Tensor Pmu = torch::zeros({adj*nodes, 4}, options); 
+	torch::Tensor Pmu_adj = torch::zeros({adj*nodes, 1}, options); 
 	Index = Index.to(options);
 	IncomingEdges = IncomingEdges.to(options);
 	AdjMatrix = AdjMatrix.to(options);
@@ -123,13 +130,14 @@ torch::Tensor IncomingEdgeVectorGPU(torch::Tensor AdjMatrix, torch::Tensor Incom
 			AdjMatrix.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(), 
 			IncomingEdges.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
 			Index.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+			Pmu_adj.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
 			Pmu.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
 			Pmu.size(0), 
 			nodes
 		);
 	})); 
 
-	return Pmu; 
+	return {Pmu, Pmu_adj}; 
 }
 
 
@@ -153,7 +161,8 @@ torch::Tensor PathCombinatorialGPU(const int nodes, torch::Tensor t)
 {
 	const int threads = 1024;
 	const dim3 blocks((t.size(0) + threads -1)/threads, 1); 
-
+		
+	std::cout << "!!!! WARNING !!!!! NOT WORKING AS EXPECTED!" << std::endl;
 	torch::TensorOptions options = torch::TensorOptions().dtype(torch::kFloat).device(torch::kCUDA);
 	torch::Tensor Combi = torch::zeros({t.size(0), nodes}, options);
 	AT_DISPATCH_FLOATING_TYPES(torch::kFloat, "CombinatorialKernel", ([&]

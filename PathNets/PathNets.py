@@ -4,14 +4,10 @@ from torch.nn import Sequential as Seq
 import torch_geometric
 from torch_geometric.nn import MessagePassing, Linear
 
-from PathNetOptimizer import PathCombinatorial
 from LorentzVector import *
 
-if torch.cuda.is_available():
-    from PathNetOptimizerCUDA import *
-else:
-    from PathNetOptimizerCPU import *
-
+from PathNetOptimizer import PathCombinatorial
+from PathNetOptimizerCUDA import PathVector, PathMass, IncomingEdgeVector, IncomingEdgeMass
 
 def MakeMLP(lay):
     out = []
@@ -54,16 +50,12 @@ class PathNetsTruthJet(MessagePassing):
         return Pmu_j
 
     def aggregate(self, message, index, Pmu):
-        print(index.view(-1, self._n) )
-
-        print(message)
-        print(PathMass(self._AdjMatrix, message.view(-1, self._n, 4)[0])/1000)
-
-
-
-        #PathVector(self._AdjMatrix, Pmu)
-
-
+        print(index.view(-1, self._n))
+        
+        V, adj = IncomingEdgeVector(self._AdjMatrix, message, index.view(-1, 1))
+        M = MassFromPxPyPzE(V)/1000
+        print(self._AdjMatrix[adj].view(-1, self._n), M)
+        
 
 
 
