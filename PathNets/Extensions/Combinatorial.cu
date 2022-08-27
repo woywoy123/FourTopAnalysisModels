@@ -1,3 +1,4 @@
+#include <sys/types.h>
 #include <torch/extension.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -133,21 +134,38 @@ torch::Tensor IncomingEdgeVectorGPU(torch::Tensor AdjMatrix, torch::Tensor Incom
 
 
 
-//template <typename scalar_t>
-//__global__ void CombinatorialKernel(
-//
-//
-
-
-// Need to continue here. Write a non recursive binary combinatorial....
-torch::Tensor PathCombinatorialGPU(int n, int k, int len)
+template <typename scalar_t>
+__global__ void CombinatorialKernel(
+	torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> Combi,
+	const torch::PackedTensorAccessor32<scalar_t, 1, torch::RestrictPtrTraits> t,
+	const size_t nodes)
 {
-	const int threads = 1024; 
-	const dim3 blocks((n + threads -1)/threads, k); 
+	const int i = blockIdx.x*blockDim.x + threadIdx.x;
 
-	torch::TensorOptions options = torch::TensorOptions().dtype(torch::kInt).device(torch::kCUDA);
-	torch::Tensor Combi = torch::zeros({len, n}, options);
-	torch::Tensor MSK = torch::pow(2, torch::arange(n, options));
+	if (i < t.size(0))
+	{
+		int n = t[i];
+		for (unsigned int l = 0; l < nodes; l++){ Combi[i][l] = n & 1; n >>= 1;}
+	}
+}
 
-	return torch::tensor({1, 2}, options); 
+torch::Tensor PathCombinatorialGPU(const int nodes, torch::Tensor t)
+{
+	const int threads = 1024;
+	const dim3 blocks((t.size(0) + threads -1)/threads, 1); 
+
+	torch::TensorOptions options = torch::TensorOptions().dtype(torch::kFloat).device(torch::kCUDA);
+	torch::Tensor Combi = torch::zeros({t.size(0), nodes}, options);
+	AT_DISPATCH_FLOATING_TYPES(torch::kFloat, "CombinatorialKernel", ([&]
+	{
+		CombinatorialKernel<scalar_t><<<blocks, threads>>>(
+			Combi.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+			t.packed_accessor32<scalar_t, 1, torch::RestrictPtrTraits>(),
+			nodes
+		);
+	}));
+	
+	Combi = Combi.to(options.dtype(torch::kInt));
+
+	return Combi; 
 }

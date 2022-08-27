@@ -47,20 +47,13 @@ from PathNetOptimizer import *
 #    assert i == j
 
 
-
-
-
 from PathNetOptimizerCUDA import * 
-
-nodes = 4
-mx = 2
-#print(PathCombinatorial(n, mx))
-
+import time 
 
 def Combinatorial(n, k, msk, t = [], v = [], num = 0):
 
     if n == 0:
-        t += [torch.tensor(num).unsqueeze(-1).bitwise_and(msk).ne(0).to(dtype = int)]
+        t += [torch.tensor(num).unsqueeze(-1).bitwise_and(msk).ne(0).to(dtype = int).tolist()]
         v += [num]
         return t, v
 
@@ -72,58 +65,29 @@ def Combinatorial(n, k, msk, t = [], v = [], num = 0):
     return t, v
 
 
+nodes = 26
+mx = 3
+
+
+ts_c = time.time()
+K = PathCombinatorial(nodes, mx)
+te_c = time.time()
+print(K)
 msk = torch.pow(2, torch.arange(nodes))
+ts = time.time()
 for i in range(1, mx+1):
     out, num = Combinatorial(nodes, i, msk)
+te = time.time()
 
-def fact(n):
-    if n == 0:
-        return 1
-    return n*fact(n-1)
-
-cmb = 0
-for i in range(1, mx+1):
-    cmb += fact(nodes) / ( fact(nodes - i) * fact(i) )
-
-
-
-for t, z in zip(out, num):
-    print(t, z)
-
-print("----")
-mkr = []
-nkr = []
-
-
-
-for n in range(nodes):
-    out = msk[n]
-    for l in range(nodes):
-        if n > l:
-            continue
-        out = msk[n] + msk[l]
-        print([torch.tensor(int(out)).unsqueeze(-1).bitwise_and(msk).ne(0).to(dtype = int)])
-
-
-exit()
-print(len(out), len(mkr), len(nkr), cmb)
-
+print(len(K), len(out))
+print("CUDA", te_c - ts_c, "CPU", te - ts)
+K = K.tolist()
 for i in out:
-    f = False
-    it = -1
-    for j in mkr:
-        it += 1
-        if torch.sum(torch.eq(i, j)) != len(j):
-            continue
-        f = True 
-        j = mkr.pop(it)
-        break
+    if i not in K:
+        print("+>", i)
 
-    if f == False:
-        print(i, j)
-    if f:
-        print("--->", len(mkr))
-
-
+for i in K:
+    if i not in out:
+        print("->", i)
 
 
