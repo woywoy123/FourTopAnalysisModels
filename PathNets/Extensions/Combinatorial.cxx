@@ -4,7 +4,13 @@
 
 using namespace torch::indexing; 
 
-void Combinatorial(int n, int k, int num, std::vector<torch::Tensor>* out, torch::TensorOptions options, torch::Tensor msk)
+void Combinatorial(
+        int n, 
+        int k, 
+        int num, 
+        std::vector<torch::Tensor>* out, 
+        torch::TensorOptions options, 
+        torch::Tensor msk)
 { 
 	if (n == 0)
 	{
@@ -21,7 +27,10 @@ void Combinatorial(int n, int k, int num, std::vector<torch::Tensor>* out, torch
 }
 
 
-torch::Tensor PathCombinatorialCPU(int n, unsigned int max, std::string device)
+torch::Tensor PathCombinatorialCPU(
+        int n, 
+        unsigned int max, 
+        std::string device)
 {
 	torch::TensorOptions options = torch::TensorOptions();
 	if (device == "cuda"){options = options.device(torch::kCUDA);}
@@ -50,7 +59,9 @@ torch::Tensor MassFromPxPyPzE(torch::Tensor v)
   return torch::sqrt(s2.abs()); 
 }
 
-torch::Tensor PathVectorCPU(torch::Tensor AdjMatrix, torch::Tensor FourVector)
+torch::Tensor PathVectorCPU(
+        torch::Tensor AdjMatrix, 
+        torch::Tensor FourVector)
 {
 	std::vector<torch::Tensor> MassCombi; 
 	for (unsigned int i = 0; i < AdjMatrix.sizes()[0]; ++i)
@@ -61,15 +72,62 @@ torch::Tensor PathVectorCPU(torch::Tensor AdjMatrix, torch::Tensor FourVector)
 	return torch::stack(MassCombi);
 }
 
-torch::Tensor PathMassCPU(torch::Tensor AdjMatrix, torch::Tensor FourVector)
+torch::Tensor PathMassCPU(
+        torch::Tensor AdjMatrix, 
+        torch::Tensor FourVector)
 {
 	return MassFromPxPyPzE(PathVectorCPU(AdjMatrix, FourVector)); 
 }
 
+std::vector<torch::Tensor> IncomingEdgeVectorCPU(
+        torch::Tensor AdjMatrix, 
+        torch::Tensor IncomingEdges, 
+        torch::Tensor Index)
+{
+	torch::TensorOptions options = torch::TensorOptions().dtype(torch::kFloat).device(torch::kCPU); 
+    const unsigned int adj = AdjMatrix.size(0);
+    const unsigned int nodes = AdjMatrix.size(1);
+    torch::Tensor Pmu = torch::zeros({adj*nodes, 4}, options);
+    torch::Tensor Pmu_adj = torch::zeros({adj*nodes, 1}, options);
+    Index = Index.to(options);
+    IncomingEdges = IncomingEdges.to(options);
+    AdjMatrix = AdjMatrix.to(options);
+
+    for (unsigned int i = 0; i < nodes; i++)
+    {
+        for (unsigned int index = 0; index < adj; index++)
+        {
+            for (unsigned int j = 0; j < nodes; j++)
+            {
+                unsigned int ni = Index[j + i*nodes][0].item<int>();
+                if ( ni != i ){continue;}
+                for (unsigned int dim = 0; dim < 4; dim++)
+                {
+                    Pmu[index + i*adj][dim] += AdjMatrix[index][j]*IncomingEdges[j + i*nodes][dim];
+                }
+                Pmu_adj[index + i*adj][0] = Index[j + i*nodes][0];
+            }
+        }
+    }
+
+    return {Pmu, Pmu_adj};
+}
+
+std::vector<torch::Tensor> IncomingEdgeMassCPU(
+        torch::Tensor AdjMatrix, 
+        torch::Tensor IncomingEdges, 
+        torch::Tensor Index)
+{
+    torch::TensorOptions options = torch::TensorOptions().dtype(torch::kLong);
+    std::vector<torch::Tensor> V = IncomingEdgeVectorCPU(AdjMatrix, IncomingEdges, Index);
+    return {MassFromPxPyPzE(V[0]), V[1].to(options)};
+}
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-  m.def("PathCombinatorial", &PathCombinatorialCPU, "Path Combinatorial");
-  m.def("PathVector", &PathVectorCPU, "Summation of four vectors");
-  m.def("PathMass", &PathMassCPU, "Invariant Mass"); 
+    m.def("PathCombinatorial",  &PathCombinatorialCPU, "Path Combinatorial");
+    m.def("PathVector",         &PathVectorCPU, "Summation of four vectors");
+    m.def("PathMass",           &PathMassCPU, "Invariant Mass"); 
+    m.def("IncomingEdgeVector", &IncomingEdgeVectorCPU, "Computes the aggregated vector for different combinatorial of incoming edges");
+	m.def("IncomingEdgeMass",   &IncomingEdgeMassCPU, "Computes the invariant mass of summed edge combinatorials");
 }
