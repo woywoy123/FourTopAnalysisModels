@@ -6,70 +6,42 @@ from BasicBaseLine import BasicBaseLineTruthJet
 
 Submission = Condor()
 Submission.ProjectName = "BasicBaseLineTruthJetTest"
-GeneralDir = "/nfs/dust/atlas/user/<...>/SamplesGNN/SmallSample/"
+GeneralDir = "/CERN/CustomAnalysisTopOutputTest/"
+#GeneralDir = "/nfs/dust/atlas/user/<...>/SamplesGNN/SmallSample/"
 #GeneralDir = "/nfs/dust/atlas/user/<...>/SamplesGNN/CustomAnalysisTopOutput/"
 
+def EventLoaderConfig(Name, Dir):
+    Ana = Analysis()
+    Ana.EventImplementation = Event
+    Ana.CompileSingleThread = False
+    Ana.CPUThreads = 8
+    Ana.EventCache = True 
+    Ana.InputSample(Name, GeneralDir + Dir)
+    Submission.AddJob(Name, Ana, "64GB", "24h")
+
+def DataLoaderConfig(Name):
+    Ana = Analysis()
+    Ana.EventGraph = EventGraphTruthJetLepton
+    Ana.DataCache = True
+    Ana.FullyConnect = True
+    Ana.SelfLoop = True
+    ApplyFeatures(Ana)
+    Ana.DataCacheOnlyCompile = [Name]
+    Submission.AddJob("Data_" + Name, Ana, "4GB", "24h", [Name])
+
+
 # ====== Event Loader ======== #
-ttbar = Analysis()
-ttbar.EventImplementation = Event
-ttbar.CompileSingleThread = False
-ttbar.CPUThreads = 8
-ttbar.EventCache = True
-ttbar.InputSample("ttbar", GeneralDir + "ttbar")
-Submission.AddJob("ttbar", ttbar, "64GB", "24h")
+EventLoaderConfig("ttbar", "ttbar")
+EventLoaderConfig("SingleTop", "t")
+EventLoaderConfig("BSM4Top", "tttt")
+EventLoaderConfig("Zmumu", "Zmumu")
 
-SingleTop = Analysis()
-SingleTop.EventImplementation = Event
-SingleTop.CompileSingleThread = False
-SingleTop.CPUThreads = 8
-SingleTop.EventCache = True
-SingleTop.InputSample("SingleTop", GeneralDir + "t")
-Submission.AddJob("SingleTop", SingleTop, "64GB", "24h")
-
-bsm4top = Analysis()
-bsm4top.EventImplementation = Event
-bsm4top.CompileSingleThread = False
-bsm4top.CPUThreads = 8
-bsm4top.EventCache = True
-bsm4top.InputSample("BSM4Top", GeneralDir + "tttt")
-Submission.AddJob("BSM4Top", bsm4top, "64GB", "24h")
-
-zmumu = Analysis()
-zmumu.EventImplementation = Event
-zmumu.CompileSingleThread = False
-zmumu.CPUThreads = 8
-zmumu.EventCache = True
-zmumu.InputSample("Zmumu", GeneralDir + "Zmumu")
-Submission.AddJob("Zmumu", zmumu, "64GB", "24h")
 
 # ====== Data Loader ======== #
-ttbarData = Analysis()
-ttbarData.EventGraph = EventGraphTruthJetLepton
-ttbarData.DataCache = True
-ApplyFeatures(ttbarData)
-ttbarData.DataCacheOnlyCompile = ["ttbar"]
-Submission.AddJob("Data_ttbar", ttbarData, "4GB", "24h", ["ttbar"])
-
-SingleTopData = Analysis()
-SingleTopData.EventGraph = EventGraphTruthJetLepton
-SingleTopData.DataCache = True
-ApplyFeatures(SingleTopData)
-SingleTopData.DataCacheOnlyCompile = ["SingleTop"]
-Submission.AddJob("Data_SingleTop", SingleTopData, "4GB", "24h", ["SingleTop"])
-
-bsm4topData = Analysis()
-bsm4topData.EventGraph = EventGraphTruthJetLepton
-bsm4topData.DataCache = True
-ApplyFeatures(bsm4topData)
-bsm4topData.DataCacheOnlyCompile = ["BSM4Top"]
-Submission.AddJob("Data_BSM4Top", bsm4topData, "4GB", "24h", ["BSM4Top"])
-
-ZmumuData = Analysis()
-ZmumuData.EventGraph = EventGraphTruthJetLepton
-ZmumuData.DataCache = True
-ApplyFeatures(ZmumuData)
-ZmumuData.DataCacheOnlyCompile = ["BSM4Top"]
-Submission.AddJob("Data_Zmumu", ZmumuData, "4GB", "24h", ["Zmumu"])
+DataLoaderConfig("ttbar")
+DataLoaderConfig("SingleTop")
+DataLoaderConfig("BSM4Top")
+DataLoaderConfig("Zmumu")
 
 # ====== Merge ======= #
 Smpl = ["Data_SingleTop", "Data_BSM4Top", "Data_ttbar", "Data_Zmumu"]
@@ -77,11 +49,8 @@ Loader = Analysis()
 Loader.Device = "cpu"
 Loader.GenerateTrainingSample = True
 Loader.RebuildTrainingSample = True 
-Loader.FullyConnect = True 
-Loader.SelfLoop = True
 Loader.TrainingSampleSize = 20
-Submission.AddJob("Sample", Loader, "8GB", "24h", Smpl)
-
+Submission.AddJob("Sample", Loader, "64GB", "96h", Smpl)
 
 # ======= Model to Train ======== #
 TM1 = Analysis()
@@ -211,8 +180,8 @@ Submission.AddJob("BasicBaseLineTruthJet_MRK7", TM7, "12GB", "48h", ["Sample"])
 
 
 
-#Submission.LocalDryRun()
-Submission.DisableRebuildTrainingSample = False
-Submission.DisableDataCache = False 
-Submission.DisableEventCache = False
-Submission.DumpCondorJobs()
+Submission.LocalDryRun()
+#Submission.DisableRebuildTrainingSample = False
+#Submission.DisableDataCache = False 
+#Submission.DisableEventCache = False
+#Submission.DumpCondorJobs()
