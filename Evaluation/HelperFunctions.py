@@ -102,7 +102,6 @@ def NodeStatistics(TargetDir, DataContainer, HashMap, TrainingSample, Validation
     SampleDist.Alpha = 0.5
     SampleDist.Title = "All"
     SampleDist.xData = all_
-    SampleDist.Normalize = False
     SampleDist.xBinCentering = True
     SampleDist.Filename = "n-Nodes_All"
     SampleDist.SaveFigure(TargetDir + "SampleStatistics/Raw")
@@ -111,7 +110,6 @@ def NodeStatistics(TargetDir, DataContainer, HashMap, TrainingSample, Validation
     ValDist.Alpha = 0.5
     ValDist.Title = "Validation"
     ValDist.xData = val_
-    ValDist.Normalize = False
     ValDist.xBinCentering = True
     ValDist.Filename = "n-Nodes_Validation"
     ValDist.SaveFigure(TargetDir + "SampleStatistics/Raw")
@@ -120,14 +118,12 @@ def NodeStatistics(TargetDir, DataContainer, HashMap, TrainingSample, Validation
     TrainDist.Alpha = 0.5
     TrainDist.Title = "Training"
     TrainDist.xData = tr_
-    TrainDist.Normalize = False
     TrainDist.xBinCentering = True
     TrainDist.Filename = "n-Nodes_Training"
     TrainDist.SaveFigure(TargetDir + "SampleStatistics/Raw")
     
     Merged = CombineTH1F()
     Merged.Title = "Node Distribution for Training/Validation Data Superimposed\n over Complete Sample"
-    Merged.Stack = False
     Merged.xBinCentering = True
     Merged.Style = "ATLAS"
     Merged.Normalize = "%"
@@ -139,6 +135,29 @@ def NodeStatistics(TargetDir, DataContainer, HashMap, TrainingSample, Validation
     Merged.SaveFigure(TargetDir + "SampleStatistics")
 
 def ProcessStatistics(TargetDir, DataContainer, HashMap, TrainingSample, ValidationSample, All):
+    def MakePlot(nodes_dict, nodes_list, Title1, Title2):
+        H1 = TH1F(Title = Title1, xData = nodes_list, xBinCentering = True, Alpha = 0.5)
+        
+        H2 = CombineTH1F(Title = "Node Distribution of Processes Superimposed\n over " + Title2 + " Sample", 
+                Normalize = "%", 
+                Histogram = H1, 
+                xBinCentering = True, 
+                Style = "ATLAS", 
+                xTitle = "Number of Nodes in Graph", 
+                yTitle = "Percentage of n-Nodes (%)", 
+                Filename = "ProcessDistribution_" + Title1)
+    
+        for i in nodes_dict:
+            Hist = TH1F(Title = i, 
+                    xData = nodes_dict[i], 
+                    Alpha = 0.5, 
+                    xBinCentering = True, 
+                    Filename = Title1 + "_" + i)
+            Hist.SaveFigure(TargetDir + "SampleStatistics/Raw")
+            H2.Histograms.append(Hist)
+        H2.SaveFigure(TargetDir + "SampleStatistics")
+
+
     all_, val_, tr_ = {}, {}, {}
     all_n, val_n, tr_n = [], [], []
     for i in DataContainer:
@@ -166,34 +185,30 @@ def ProcessStatistics(TargetDir, DataContainer, HashMap, TrainingSample, Validat
 
         all_[smpl_].append(n_nd)
         all_n.append(n_nd)
-   
+  
 
-    All = TH1F()
-    All.Title = "All"
-    All.xData = all_n
-    All.xBinCentering = True
-    All.Alpha = 0.5
+    MakePlot(all_, all_n, "All", "Complete")
+    MakePlot(tr_, tr_n, "Training", "Training")
+    MakePlot(val_, val_n, "Validation", "Validation")
 
-    Merged = CombineTH1F()
-    Merged.Title = "Node Distribution of Processes Superimposed\n over Complete Sample"
-    Merged.Normalize = "%"
-    Merged.Histogram = All
-    Merged.xBinCentering = True
-    Merged.Style = "ATLAS"
-
+    text = []
+    text.append("==== Complete Sample Composition ====")
     for i in all_:
-        Hist = TH1F()
-        
-        Hist.Title = i
-        Hist.xData = all_[i]
-        Hist.Alpha = 0.5
-        Hist.xBinCentering = True
-        
-        Hist.Filename = "all_" + i
-        Hist.SaveFigure(TargetDir + "SampleStatistics/Raw")
-        Merged.Histograms.append(Hist)
+        f = round(float(len(all_[i])/len(all_n))*100, 3)
+        text.append("-> " + i + " | " + str(f) + "%" + " | " + str(len(all_[i])) + " | " + str(len(all_n)))
     
-    Merged.xTitle = "Number of Nodes in Graph"
-    Merged.yTitle = "Percentage of n-Nodes (%)"
-    Merged.Filename = "ProcessDistribution_All"
-    Merged.SaveFigure(TargetDir + "SampleStatistics")
+    text.append("")
+    text.append("==== Training Sample Composition ====")
+    for i in tr_:
+        f = round(float(len(tr_[i])/len(tr_n))*100, 3)
+        text.append("-> " + i + " | " + str(f) + "%" + " | " + str(len(tr_[i])) + " | " + str(len(tr_n)))
+    
+    text.append("")
+    text.append("==== Validation Sample Composition ====")
+    for i in val_:
+        f = round(float(len(val_[i])/len(val_n))*100, 3)
+        text.append("-> " + i + " | " + str(f) + "%" + " | " + str(len(val_[i])) + " | " + str(len(val_n)))
+
+    F = open(TargetDir + "/SampleStatistics/SampleDecomposition.txt", "w") 
+    F.write("\n".join(text))
+    F.close()
