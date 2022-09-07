@@ -64,8 +64,8 @@ for i in Dir:
 Ev = Evaluation(SourceDir, i)
 Ev.ReadStatistics()
 Ev.EpochLoop()
-Ev.MakePlots(TargetDir)
-Ev.Compile()
+#Ev.MakePlots(TargetDir)
+Ev.MakeLog(TargetDir)
 
 #ReadStatistics(SourceDir + "/" + i)
 
