@@ -1,8 +1,10 @@
 from AnalysisTopGNN.IO import UnpickleObject, Directories, WriteDirectory
 from AnalysisTopGNN.Tools import Threading
 from AnalysisTopGNN.Plotting import *
+from AnalysisTopGNN.Reconstruction import Reconstructor
 import statistics
 import math
+import torch
 
 class Evaluation(Directories, WriteDirectory):
 
@@ -382,3 +384,270 @@ class Evaluation(Directories, WriteDirectory):
             Model += ["".join([key + " | " + str(s[key][i]) + " | " for key in s])]
 
         self.WriteTextFile(Model, "/Summary", "RunSummary") 
+   
+
+class TorchScriptModel(Notification):
+
+    def __init__(self, ModelPath, Device = "cpu", **kargs):
+        self.Verbose = True
+        self.VerboseLevel = 3
+        self.Caller = "TorchScriptModel"
+        self.ModelPath = ModelPath
+        self.key_o = {}
+        self.key_l = {}
+        self.key_c = {}
+        self._it = 0
+
+        key = { str(l) : "" for l in open(ModelPath, "rb").readlines() if "/extra/" in str(l)}
+        out = []
+        for k in list(set([l.split("/")[-1] for t in key for l in t.split("\\") if "/extra/" in l])):
+            x = "FB".join(k.split("FB")[:-1])
+            if x != "":
+                out.append(x)
+            x = "PK".join(k.split("PK")[:-1])
+            if x != "":
+                out.append(x)
+        
+        key = {k : "" for k in list(set(out))}
+        self._model = torch.jit.load(self.ModelPath, _extra_files = key)
+
+        self.inpt_keys = [k.replace(")", "").replace(",", "") for k in str(self._model.forward.schema).split(" ") if "Tensor" not in k and "->" not in k][1:]
+        self.forward() 
+
+        outputs = []
+        for i in self._model.graph.outputs():
+            line = str(i).replace("\n", "").split("=")[1]
+            line = ["%" + k.replace(")", "").replace(",", "").replace(" ", "") for k in line.split("%") if "::" not in k]
+            outputs += line
+            self._it += 1    
+
+        if isinstance(kargs, dict):
+            for i in list(kargs.values())[0]:
+                self.GetNodeAsOutput(**i)
+            return 
+
+        self.key_o |= { k : key[k] for k in key if k.startswith("O_") }
+        self.key_l |= { k.lstrip("L_") : key[k] for k in key if k.startswith("L_") }
+        self.key_c |= { k.lstrip("C_") : key[k] for k in key if k.startswith("C_") }
+
+        self.key_o |= {k : [outputs[j], None] for k, j in zip(self.key_o, range(len(outputs)))}
+        
+        if len(outputs) == len(key):
+            return  
+
+        self.Warning("OUTPUT NUMBERS DO NOT MATCH FOUND KEYS! THE FOLLOWING NODE MAPPING HAS BEEN PRODUCED:")
+        for i in self.key_o:
+            if isinstance(self.key_o[i], list):
+                self.Warning("KEY: " + i + " NODE: " + str(self.key_o[i][0]))
+            else:
+                self.Warning("KEY MISSING: " + i)
+                self.key_o[i] = [-1, None]
+        
+        self.Warning(">--------- Possible Nodes ---------<")
+        for i in self._model.graph.nodes():
+            if "NoneType" not in str(i):
+                continue 
+            n = str(i).replace("\n", "").split("=")
+            self.Warning("Name: " + n[0] + " | Operation: " + "=".join(n[1:]))
+        self.Warning(">----------------------------------<")
+
+    def forward(self):
+        self.forward = self
+        self.forward.__code__ = self
+        self.forward.__code__.co_varnames = self.inpt_keys
+        self.forward.__code__.co_argcount = len(self.inpt_keys)
+
+    def ShowNodes(self):
+        self.Notify("------------ BEGIN GRAPH NODES -----------------")
+        for i in self._model.graph.nodes():
+            n = str(i).replace("\n", "").split(" : ")
+            f = n[1].split("#")
+            string = "Name: " + n[0] + " | Operation: " + f[0] 
+            if len(f) > 1:
+                string += " | Function Call: " + f[1].split("/")[-1]
+            self.Notify(string)
+        self.Notify("------------ END GRAPH NODES -----------------")
+
+    def GetNodeAsOutput(self, name, node, loss, classification):
+        if isinstance(name, str):
+            names= {"O_" + name : node}
+            self.key_o |= names
+        else:
+            return self.Warning("INVALID NAMES GIVEN!")
+        
+        for i in self._model.graph.nodes():
+            n_ref = str(i).split(" = ")[0].split(":")[0].replace(" ", "")
+            if n_ref != node:
+                continue
+            self.key_o["O_" + name] = [n_ref, list(i.outputs())[0]]
+            self.key_l[name] = loss
+            self.key_c[name] = classification
+
+    def FinalizeOutput(self):
+        self.Notify(">--------- Final Output Mapping ---------<")
+        tmp = {}
+        for i in self.key_o:
+            key = i.lstrip("O_")
+            if isinstance(self.key_c[key], bytes):
+                self.key_c[key] = bool(self.key_c[key].decode().split("->")[0])
+                self.key_l[key] = str(self.key_l[key].decode()).split("->")[0]
+                self.GetNodeAsOutput(key, self.key_o[i][0], self.key_l[key], self.key_c[key]) 
+
+            out = self.key_o[i]
+            if out == -1:
+                continue
+
+            self.Notify("NODE REFERENCE: " + out[0] + " FEATURE NAME: " + key + " LOSS: " + self.key_l[key] + " CLASSIFICATION: " + str(self.key_c[key]))
+            setattr(self, i, None)
+            setattr(self, "L_" + key, self.key_l[key])
+            setattr(self, "C_" + key, self.key_c[key])
+            self._model.graph.registerOutput(out[1])
+            tmp[i] = self._it
+            self._it += 1
+        self._it = None
+        self.key_o = tmp
+        self._model.graph.makeMultiOutputIntoTuple()
+
+    def train(self):
+        self._model.train()
+
+    def eval(self):
+        self._model.eval()
+    
+    def __call__(self, **kargs):
+        out = self._model(**kargs)
+        for i in self.key_o:
+            setattr(self, i, out[self.key_o[i]])
+
+    def to(self, device):
+        self._model.to(device)
+
+
+
+
+class ModelComparison(Reconstructor, Directories, WriteDirectory):
+
+    def __init__(self):
+        self.VerboseLevel = 0
+        self.Verbose = True 
+        self.Caller = "ModelComparison"
+        self.Threads = 12
+        self.Device = "cuda"
+        self.Models = {}
+        self.ModelDirectoryONNX = {}
+        self.ModelDirectoryTScript = {}
+        self.OutputCollection = {}
+        self.OutputCollection["E_Truth"] = {}
+        self.OutputCollection["N_Truth"] = {}
+        self._init = None
+
+    def AddModel(self, model, CustomMap = []):
+        name =  model.ModelDirectoryName
+        self.Models[name] = model
+        self.ModelDirectoryONNX[name] = self.ListFilesInDir(model.SourceDirectory + "/" + name + "/ONNX")
+        self.ModelDirectoryTScript[name] = self.ListFilesInDir(model.SourceDirectory + "/" + name + "/TorchScript")
+        self.ModelDirectoryTScript["_MAP_"+name] = CustomMap
+
+    def _ImportModelsTS(self):
+        for name in self.ModelDirectoryTScript:
+            if name.startswith("_MAP_"):
+                continue 
+            files = self.ModelDirectoryTScript[name]
+            maps = self.ModelDirectoryTScript["_MAP_" + name]
+            self.OutputCollection[name] = {}
+            
+            Epochs = []
+            self.Notify("IMPORTING MODEL TORCH SCRIPT:" + name)
+            for i in files:
+                epoch = i.split("/")[-1].split("_")
+                f = epoch[-1].replace(".pt", "")
+                self.Notify("-> Imported EPOCH " + str(epoch[1]) + " / " + str(f))
+                M = TorchScriptModel(i, Device = self.Device, maps = maps) 
+                M.FinalizeOutput()
+                Epochs += [[epoch[1], M]]
+                self.OutputCollection[name][epoch[1]] = {}
+                break
+            self.ModelDirectoryTScript[name] = Epochs
+
+    def _Loop(self, Sample, feat, pt, eta, phi, e, Edge):
+        def Clean(inpt, out = []):
+            for i in inpt:
+                if len(i.shape) != 0:
+                    out += Clean(i)
+                else:
+                    out.append(float(i))
+            return out
+
+
+
+        out = []
+        for i in list(Sample.values()):
+            i.to(device = self.Device)
+            self.Sample = i
+            if Edge:
+                val = self.MassFromEdgeFeature(feat, "N_" + pt, "N_" + eta, "N_" + phi, "N_" + e)
+            else:
+                val = self.MassFromNodeFeature(feat, "N_" + pt, "N_" + eta, "N_" + phi, "N_" + e)
+            
+            out += Clean(val)
+        return out
+
+    def _Rebuild(self, Sample, pt, eta, phi, e, varname, Level):
+        if self._init == None: 
+            self._ImportModelsTS()
+        
+        if Level == "Edge":
+            key = "E_Truth"
+            edge = True
+        else:
+            key = "N_Truth"
+            edge = False
+
+        for i in self.ModelDirectoryTScript:
+            if i.startswith("_MAP_"):
+                continue 
+         
+            if varname not in self.OutputCollection[key]:
+                self.TruthMode = True
+                self.OutputCollection[key][varname] = self._Loop(Sample, varname, pt, eta, phi, e, edge) 
+                self.TruthMode = False 
+           
+                H = TH1F()
+                H.xData = self.OutputCollection[key][varname]
+                H.Title = varname
+                H.xTitle = "Mass (GeV)"
+                H.xBins = 100
+                H.xMax = 300
+                H.xMin = 100
+                H.Filename = "TRUTH_" + varname
+                H.SaveFigure("./")
+
+            for smpl in list(Sample.values()):
+                break
+            
+            smpl.to(device = self.Device)
+            self.Sample = smpl
+            
+            for ep in range(len(self.OutputCollection[i])):
+                epoch = self.ModelDirectoryTScript[i][ep][0]
+                self.Model = self.ModelDirectoryTScript[i][ep][1]
+                self._init = False
+                self.InitializeModel()
+                self.OutputCollection[i][epoch][varname] = self._Loop(Sample, varname, pt, eta, phi, e, edge)
+
+                H = TH1F()
+                H.xData = out
+                H.Title = varname
+                H.xTitle = "Mass (GeV)"
+                H.xBins = 100
+                H.xMax = 300
+                H.xMin = 100
+                H.Filename = varname + "_" + str(epoch)
+                H.SaveFigure("./")
+
+
+    def RebuildMassEdge(self, Sample, varname_pt, varname_eta, varname_phi, varname_energy, ModelOutputVaribleName):
+        self._Rebuild(Sample, varname_pt, varname_eta, varname_phi, varname_energy, ModelOutputVaribleName, "Edge")
+
+    def RebuildMassNode(self, Sample, varname_pt, varname_eta, varname_phi, varname_energy, ModelOutputVaribleName):
+        self._Rebuild(Sample, varname_pt, varname_eta, varname_phi, varname_energy, ModelOutputVaribleName, "Node")

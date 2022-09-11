@@ -17,9 +17,9 @@ Dir = [i.split("/")[-1] for i in D.Files]
 
 #out = GetSampleDetails(SourceDir)
 ##BuildSymlinksToHDF5(SourceDir)
-##Data = RetrieveSamples(SourceDir)
-##PickleObject(Data, "HDF5")
-#Data = UnpickleObject("HDF5")
+#Data = RetrieveSamples(SourceDir)
+#PickleObject(Data, "HDF5")
+Data = UnpickleObject("HDF5")
 #
 #mp = {}
 #for i in out["DataContainer"]:
@@ -41,12 +41,12 @@ Dir = [i.split("/")[-1] for i in D.Files]
 ## Reverse the lookup to hash = node
 #Tr = {i : j for j in Tr for i in Tr[j]} 
 #Val = {i : j for j in Val for i in Val[j]}
-
-
-# Node Statistics - General Sample
+#
+#
+## Node Statistics - General Sample
 #NodeStatistics(TargetDir, DC, mp, Tr, Val)
-
-# Process Statistics
+#
+## Process Statistics
 #ProcessStatistics(TargetDir, DC, mp, Tr, Val, out)
 
 
@@ -61,11 +61,92 @@ for i in Dir:
 #M.PlotStats(TargetDir + i)
 
 
-Ev = Evaluation(SourceDir, i)
-Ev.ReadStatistics()
-Ev.EpochLoop()
+#Ev = Evaluation(SourceDir, i)
+#Ev.ReadStatistics()
+#Ev.EpochLoop()
 #Ev.MakePlots(TargetDir)
-Ev.MakeLog(TargetDir)
+#Ev.MakeLog(TargetDir)
 
 #ReadStatistics(SourceDir + "/" + i)
+
+#PickleObject(Ev, "Model")
+Ev = UnpickleObject("Model")
+M = ModelComparison()
+M.Device = "cuda"
+
+pro = [
+        {"name": "edge", "node" : "%234", "classification" : "True", "loss" : "CEL"}, 
+        {"name": "from_res", "node" : "%512", "classification" : "True", "loss" : "CEL"}, 
+        #{"name": "signal_sample", "node" : "%538", "classification" : "True", "loss" : "CEL"}, 
+        #{"name": "from_top", "node" : "%329", "classification" : "True", "loss" : "CEL"}, 
+    ]
+
+M.AddModel(Ev, pro)
+#M.RebuildMassEdge(Data, "pT", "eta", "phi", "energy", "edge")
+M.RebuildMassNode(Data, "pT", "eta", "phi", "energy", "from_res")
+
+##Data = list(Data.values())[0]
+###model = BasicBaseLineTruthJet
+###m = torch.jit.trace(model(), inpt_list)
+###torch.jit.save(m, "./Model.pt")
+##m = torch.jit.load("./Model.pt")
+##
+##inpt_keys = [k.replace(")", "").replace(",", "") for k in str(m.forward.schema).split(" ") if "Tensor" not in k and "->" not in k and "self" not in k][1:]
+##inpt_keys = {k : Data[k] for k in inpt_keys}
+##
+##
+#print(dir(m))
+#print(dir(m.graph))
+#
+#get = []
+#for i in list(m.graph.nodes()):
+#    #if str(i).startswith("%234"):
+#    #    m.graph.registerOutput(list(i.outputs())[0])
+#
+#    ###print(str(i).replace("\n", ""))
+#    #if str(i).startswith("%_signal"):
+#    #    m.graph.registerOutput(list(i.outputs())[0])
+#    #
+#    #if str(i).startswith("%329"):
+#    #    m.graph.registerOutput(list(i.outputs())[0])
+#
+#    if str(i).startswith("%input8.1") or str(i).startswith("%_signal.1"):
+#        m.graph.registerOutput(list(i.outputs())[0])
+#        get.append(i)
+#
+#for i in get:
+#    print(i)
+#
+##for i in list(m.graph.nodes()):
+##    print(str(i).replace("\n", ""))
+#
+#
+#
+#
+#
+##
+##
+##
+#m.graph.makeMultiOutputIntoTuple()
+#m.eval()
+#out = m(**inpt_keys)
+##
+#
+#
+#
+#for i in out[1:]:
+#    print("_--")
+#    if isinstance(i, torch._C.ScriptModule):
+#        print(out[-1])
+#        print(m._isedge(out[-1]))
+#    exit()
+#    print(i)
+##exit()
+##
+##
+##out = [i for i in out][1:]
+##print(out)
+#
+##print(list(m.graph.outputs()))
+##print(m.graph.return_node())
 
