@@ -9,7 +9,7 @@ import Templates.TruthJet.NodeFeature as tj_nf
 import Templates.TruthJet.GraphFeature as tj_gf
 from AnalysisTopGNN.Tools.ModelTesting import AddFeature
 
-def TruthJets():
+def TruthJetsFeatures(Analysis):
     # Node: Generic Particle Properties
     GenPartNF = {
             "eta" : nf.eta, 
@@ -61,24 +61,23 @@ def TruthJets():
     Features |= AddFeature("NT", TruthJetTNF)    
     Features |= AddFeature("NT", GenPartTNF)
     Features |= AddFeature("GT", GenPartTGF)
-    return Features
 
-def ApplyFeatures(A):
-    Features = TruthJets()
     for i in Features:
         base = "_".join(i.split("_")[1:])
         fx = Features[i]
         
         if "EF" in i:
-            A.AddEdgeFeature(base, fx)
+            Analysis.AddEdgeFeature(base, fx)
         elif "NF" in i:
-            A.AddNodeFeature(base, fx)
+            Analysis.AddNodeFeature(base, fx)
         elif "GF" in i:
-            A.AddGraphFeature(base, fx)
+            Analysis.AddGraphFeature(base, fx)
 
         elif "ET" in i:
-            A.AddEdgeTruth(base, fx)
+            Analysis.AddEdgeTruth(base, fx)
         elif "NT" in i:
-            A.AddNodeTruth(base, fx)
+            Analysis.AddNodeTruth(base, fx)
         elif "GT" in i:
-            A.AddGraphTruth(base, fx)
+            Analysis.AddGraphTruth(base, fx)
+    return Features
+ 

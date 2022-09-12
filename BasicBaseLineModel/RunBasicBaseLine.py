@@ -9,7 +9,7 @@ def BaseLineModelTruthJet(Files, Names, CreateCache):
     Features = TruthJets()
     DL = CreateWorkspace(Files, Features, CreateCache, 100, Names, "TruthJetLepton", True)
     samples = DL.TrainingSample
-    k = 19 
+    k = 14 
     #su = 0
     #for i in samples:
     #    su += len(samples[i])
@@ -28,7 +28,7 @@ def BaseLineModelTruthJet(Files, Names, CreateCache):
     #kill |= {"from_res" : "C"}
     #kill |= {"signal_sample": "C"}
     #kill |= {"from_top": "C"}
-    KillCondition(kill, 50, Op, samples[k], 100000, sleep = 2, batched = 10)
+    KillCondition(kill, 50, Op, samples[k], 100000, sleep = 2, batched = 3)
 
 
 def BaseLineModelTruthJetAnalysis():
@@ -91,8 +91,8 @@ def BaseLineModelTruthJetAnalysis():
 
 if __name__ == "__main__":
     GeneralDir = "/CERN/CustomAnalysisTopOutputTest/"
-    Files = [GeneralDir + "tttt/MCe/QU_0.root", GeneralDir + "t/MCa/QU_0.root"]
+    Files = [GeneralDir + "tttt/QU_0.root", GeneralDir + "t/QU_0.root"]
     Names = ["tttt", "t"]
     CreateCache = True
-    #BaseLineModelTruthJet(Files, Names, CreateCache)
-    BaseLineModelTruthJetAnalysis()
+    BaseLineModelTruthJet(Files, Names, CreateCache)
+    #BaseLineModelTruthJetAnalysis()

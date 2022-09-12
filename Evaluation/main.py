@@ -16,7 +16,7 @@ D.ListDirs()
 Dir = [i.split("/")[-1] for i in D.Files]
 
 #out = GetSampleDetails(SourceDir)
-##BuildSymlinksToHDF5(SourceDir)
+#BuildSymlinksToHDF5(SourceDir)
 #Data = RetrieveSamples(SourceDir)
 #PickleObject(Data, "HDF5")
 Data = UnpickleObject("HDF5")
@@ -64,11 +64,11 @@ for i in Dir:
 #Ev = Evaluation(SourceDir, i)
 #Ev.ReadStatistics()
 #Ev.EpochLoop()
-#Ev.MakePlots(TargetDir)
+##Ev.MakePlots(TargetDir)
 #Ev.MakeLog(TargetDir)
-
-#ReadStatistics(SourceDir + "/" + i)
-
+#
+##ReadStatistics(SourceDir + "/" + i)
+#
 #PickleObject(Ev, "Model")
 Ev = UnpickleObject("Model")
 M = ModelComparison()

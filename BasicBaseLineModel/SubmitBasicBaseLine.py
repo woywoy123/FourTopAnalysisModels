@@ -6,16 +6,19 @@ from BasicBaseLine import BasicBaseLineTruthJet
 
 Submission = Condor()
 Submission.ProjectName = "BasicBaseLineTruthJetTest"
+Submission.DisableEventCache = True
+Submission.DisableDataCache = True
 GeneralDir = "/CERN/CustomAnalysisTopOutputTest/"
+
 #GeneralDir = "/nfs/dust/atlas/user/<...>/SamplesGNN/SmallSample/"
 #GeneralDir = "/nfs/dust/atlas/user/<...>/SamplesGNN/CustomAnalysisTopOutput/"
 
 def EventLoaderConfig(Name, Dir):
     Ana = Analysis()
-    Ana.EventImplementation = Event
-    Ana.CompileSingleThread = False
-    Ana.CPUThreads = 8
+    Ana.Event = Event
+    Ana.Threads = 12
     Ana.EventCache = True 
+    Ana.Tree = "nominal"
     Ana.InputSample(Name, GeneralDir + Dir)
     Submission.AddJob(Name, Ana, "64GB", "24h")
 
@@ -25,9 +28,12 @@ def DataLoaderConfig(Name):
     Ana.DataCache = True
     Ana.FullyConnect = True
     Ana.SelfLoop = True
+    Ana.DumpHDF5 = True
+    Ana.Threads = 12
+    Ana.InputSample(Name)
     ApplyFeatures(Ana)
     Ana.DataCacheOnlyCompile = [Name]
-    Submission.AddJob("Data_" + Name, Ana, "4GB", "24h", [Name])
+    Submission.AddJob("Data_" + Name, Ana, "64GB", "24h", [Name])
 
 
 # ====== Event Loader ======== #
@@ -46,10 +52,13 @@ DataLoaderConfig("Zmumu")
 # ====== Merge ======= #
 Smpl = ["Data_SingleTop", "Data_BSM4Top", "Data_ttbar", "Data_Zmumu"]
 Loader = Analysis()
-Loader.Device = "cpu"
-Loader.GenerateTrainingSample = True
-Loader.RebuildTrainingSample = True 
-Loader.TrainingSampleSize = 20
+Loader.InputSample("ttbar")
+Loader.InputSample("SingleTop")
+Loader.InputSample("BSM4Top")
+Loader.InputSample("Zmumu")
+Loader.MergeSamples = False
+Loader.GenerateTrainingSample = False
+Loader.ValidationSize = 20
 Submission.AddJob("Sample", Loader, "64GB", "96h", Smpl)
 
 # ======= Model to Train ======== #
@@ -58,13 +67,13 @@ TM1.RunName = "BaseLineTruthJet_MRK1"
 TM1.ONNX_Export = True
 TM1.TorchScript_Export = True
 TM1.kFold = 10
-TM1.CPUThreads = 2
+TM1.Threads = 2
 TM1.Device = "cuda"
 TM1.Epochs = 100
 TM1.Model = BasicBaseLineTruthJet()
 TM1.LearningRate = 0.01
 TM1.WeightDecay = 0.01
-TM1.BatchSize = 50
+TM1.BatchSize = 2
 TM1.SchedulerParams = {"gamma" : 0.9}
 TM1.DefaultScheduler = "ExponentialR"
 Submission.AddJob("BasicBaseLineTruthJet_MRK1", TM1, "12GB", "48h", ["Sample"])
@@ -74,7 +83,7 @@ TM2.RunName = "BaseLineTruthJet_MRK2"
 TM2.ONNX_Export = True
 TM2.TorchScript_Export = True
 TM2.kFold = 10
-TM2.CPUThreads = 2
+TM2.Threads = 2
 TM2.Device = "cuda"
 TM2.Epochs = 100
 TM2.Model = BasicBaseLineTruthJet()
@@ -90,7 +99,7 @@ TM3.RunName = "BaseLineTruthJet_MRK3"
 TM3.ONNX_Export = True
 TM3.TorchScript_Export = True
 TM3.kFold = 10
-TM3.CPUThreads = 2
+TM3.Threads = 2
 TM3.Device = "cuda"
 TM3.Epochs = 100
 TM3.Model = BasicBaseLineTruthJet()
@@ -106,7 +115,7 @@ TM4.RunName = "BaseLineTruthJet_MRK4"
 TM4.ONNX_Export = True
 TM4.TorchScript_Export = True
 TM4.kFold = 10
-TM4.CPUThreads = 2
+TM4.Threads = 2
 TM4.Device = "cuda"
 TM4.Epochs = 100
 TM4.Model = BasicBaseLineTruthJet()
@@ -122,7 +131,7 @@ TM5.RunName = "BaseLineTruthJet_MRK5"
 TM5.ONNX_Export = True
 TM5.TorchScript_Export = True
 TM5.kFold = 10
-TM5.CPUThreads = 2
+TM5.Threads = 2
 TM5.Device = "cuda"
 TM5.Epochs = 100
 TM5.Model = BasicBaseLineTruthJet()
@@ -138,7 +147,7 @@ TM6.RunName = "BaseLineTruthJet_MRK6"
 TM6.ONNX_Export = True
 TM6.TorchScript_Export = True
 TM6.kFold = 10
-TM6.CPUThreads = 2
+TM6.Threads = 2
 TM6.Device = "cuda"
 TM6.Epochs = 100
 TM6.Model = BasicBaseLineTruthJet()
@@ -154,7 +163,7 @@ TM7.RunName = "BaseLineTruthJet_MRK7"
 TM7.ONNX_Export = True
 TM7.TorchScript_Export = True
 TM7.kFold = 10
-TM7.CPUThreads = 2
+TM7.Threads = 2
 TM7.Device = "cuda"
 TM7.Epochs = 100
 TM7.Model = BasicBaseLineTruthJet()
@@ -164,21 +173,6 @@ TM7.BatchSize = 50
 TM7.DefaultOptimizer = "SGD"
 TM7.DefaultScheduler = None
 Submission.AddJob("BasicBaseLineTruthJet_MRK7", TM7, "12GB", "48h", ["Sample"])
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 Submission.LocalDryRun()
 #Submission.DisableRebuildTrainingSample = False

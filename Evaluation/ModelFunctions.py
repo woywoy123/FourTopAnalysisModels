@@ -34,7 +34,8 @@ class Evaluation(Directories, WriteDirectory):
         self._ModelKeys = None
 
     def ReadStatistics(self):
-        def function(F, out = []):
+        def function(F):
+            out = []
             for i in F:
                 out.append(UnpickleObject(i))
             return out
@@ -566,19 +567,13 @@ class ModelComparison(Reconstructor, Directories, WriteDirectory):
                 M.FinalizeOutput()
                 Epochs += [[epoch[1], M]]
                 self.OutputCollection[name][epoch[1]] = {}
-                break
             self.ModelDirectoryTScript[name] = Epochs
 
     def _Loop(self, Sample, feat, pt, eta, phi, e, Edge):
         def Clean(inpt, out = []):
             for i in inpt:
-                if len(i.shape) != 0:
-                    out += Clean(i)
-                else:
-                    out.append(float(i))
+                out.append(float(i))
             return out
-
-
 
         out = []
         for i in list(Sample.values()):
@@ -611,17 +606,6 @@ class ModelComparison(Reconstructor, Directories, WriteDirectory):
                 self.TruthMode = True
                 self.OutputCollection[key][varname] = self._Loop(Sample, varname, pt, eta, phi, e, edge) 
                 self.TruthMode = False 
-           
-                H = TH1F()
-                H.xData = self.OutputCollection[key][varname]
-                H.Title = varname
-                H.xTitle = "Mass (GeV)"
-                H.xBins = 100
-                H.xMax = 300
-                H.xMin = 100
-                H.Filename = "TRUTH_" + varname
-                H.SaveFigure("./")
-
             for smpl in list(Sample.values()):
                 break
             
@@ -634,17 +618,6 @@ class ModelComparison(Reconstructor, Directories, WriteDirectory):
                 self._init = False
                 self.InitializeModel()
                 self.OutputCollection[i][epoch][varname] = self._Loop(Sample, varname, pt, eta, phi, e, edge)
-
-                H = TH1F()
-                H.xData = out
-                H.Title = varname
-                H.xTitle = "Mass (GeV)"
-                H.xBins = 100
-                H.xMax = 300
-                H.xMin = 100
-                H.Filename = varname + "_" + str(epoch)
-                H.SaveFigure("./")
-
 
     def RebuildMassEdge(self, Sample, varname_pt, varname_eta, varname_phi, varname_energy, ModelOutputVaribleName):
         self._Rebuild(Sample, varname_pt, varname_eta, varname_phi, varname_energy, ModelOutputVaribleName, "Edge")
