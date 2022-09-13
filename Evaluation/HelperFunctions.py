@@ -105,6 +105,7 @@ def NodeStatistics(TargetDir, DataContainer, HashMap, TrainingSample, Validation
     SampleDist.xBinCentering = True
     SampleDist.Filename = "n-Nodes_All"
     SampleDist.SaveFigure(TargetDir + "SampleStatistics/Raw")
+    SampleDist.Color = None
     
     ValDist = TH1F()
     ValDist.Alpha = 0.5
@@ -113,7 +114,8 @@ def NodeStatistics(TargetDir, DataContainer, HashMap, TrainingSample, Validation
     ValDist.xBinCentering = True
     ValDist.Filename = "n-Nodes_Validation"
     ValDist.SaveFigure(TargetDir + "SampleStatistics/Raw")
-    
+    ValDist.Color = None 
+
     TrainDist = TH1F()
     TrainDist.Alpha = 0.5
     TrainDist.Title = "Training"
@@ -121,7 +123,8 @@ def NodeStatistics(TargetDir, DataContainer, HashMap, TrainingSample, Validation
     TrainDist.xBinCentering = True
     TrainDist.Filename = "n-Nodes_Training"
     TrainDist.SaveFigure(TargetDir + "SampleStatistics/Raw")
-    
+    TrainDist.Color = None 
+
     Merged = CombineTH1F()
     Merged.Title = "Node Distribution for Training/Validation Data Superimposed\n over Complete Sample"
     Merged.xBinCentering = True
@@ -154,6 +157,7 @@ def ProcessStatistics(TargetDir, DataContainer, HashMap, TrainingSample, Validat
                     xBinCentering = True, 
                     Filename = Title1 + "_" + i)
             Hist.SaveFigure(TargetDir + "SampleStatistics/Raw")
+            Hist.Color = None
             H2.Histograms.append(Hist)
         H2.SaveFigure(TargetDir + "SampleStatistics")
 

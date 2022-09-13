@@ -1,4 +1,4 @@
-from AnalysisTopGNN.Tools import Metrics 
+from AnalysisTopGNN.Tools.Metrics import Metrics 
 from AnalysisTopGNN.IO import Directories, WriteDirectory
 from AnalysisTopGNN.IO import UnpickleObject, PickleObject
 from AnalysisTopGNN.Plotting import *
@@ -33,7 +33,7 @@ Data = UnpickleObject("HDF5")
 ## Get a statistical breakdown of the data:
 ## -> All; 
 ##   n-Nodes, entries for process, Training/Validation of nodes
-#
+##
 #DC = out["DataContainer"]
 #Tr = out["TrainingSample"]
 #Val = out["ValidationSample"]
@@ -48,42 +48,69 @@ Data = UnpickleObject("HDF5")
 #
 ## Process Statistics
 #ProcessStatistics(TargetDir, DC, mp, Tr, Val, out)
-
-
-W = WriteDirectory()
-for i in Dir:
-    if "_" not in i:
-        continue
-    break
-
-#W.MakeDir(TargetDir + i)
-#M = Metrics(i, SourceDir)
-#M.PlotStats(TargetDir + i)
-
-
-#Ev = Evaluation(SourceDir, i)
-#Ev.ReadStatistics()
-#Ev.EpochLoop()
-##Ev.MakePlots(TargetDir)
-#Ev.MakeLog(TargetDir)
 #
-##ReadStatistics(SourceDir + "/" + i)
-#
-#PickleObject(Ev, "Model")
-Ev = UnpickleObject("Model")
+
+
+
 M = ModelComparison()
-M.Device = "cuda"
-
 pro = [
         {"name": "edge", "node" : "%234", "classification" : "True", "loss" : "CEL"}, 
         {"name": "from_res", "node" : "%512", "classification" : "True", "loss" : "CEL"}, 
         #{"name": "signal_sample", "node" : "%538", "classification" : "True", "loss" : "CEL"}, 
         #{"name": "from_top", "node" : "%329", "classification" : "True", "loss" : "CEL"}, 
     ]
-
+M.Device = "cuda"
+#W = WriteDirectory()
+#for i in Dir:
+#    if "_" not in i:
+#        continue
+#
+#    #W.MakeDir(TargetDir + i)
+#    #M = Metrics(i, SourceDir)
+#    #M.PlotStats(TargetDir + i)
+#
+#    Ev = Evaluation(SourceDir, i)
+#    Ev.ReadStatistics()
+#    Ev.EpochLoop()
+#    #Ev.MakePlots(TargetDir)
+#    Ev.MakeLog(TargetDir)
+#    break
+#PickleObject(Ev, "Model")
+Ev = UnpickleObject("Model")
 M.AddModel(Ev, pro)
 #M.RebuildMassEdge(Data, "pT", "eta", "phi", "energy", "edge")
-M.RebuildMassNode(Data, "pT", "eta", "phi", "energy", "from_res")
+#M.RebuildMassNode(Data, "pT", "eta", "phi", "energy", "from_res")
+M.MakePlots()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ##Data = list(Data.values())[0]
 ###model = BasicBaseLineTruthJet

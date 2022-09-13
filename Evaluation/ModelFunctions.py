@@ -1,10 +1,12 @@
-from AnalysisTopGNN.IO import UnpickleObject, Directories, WriteDirectory
+from AnalysisTopGNN.IO import UnpickleObject, Directories, WriteDirectory, PickleObject
 from AnalysisTopGNN.Tools import Threading
 from AnalysisTopGNN.Plotting import *
 from AnalysisTopGNN.Reconstruction import Reconstructor
 import statistics
 import math
 import torch
+from AnalysisTopGNN.Generators import ModelImporter
+import LorentzVector as LV
 
 class Evaluation(Directories, WriteDirectory):
 
@@ -261,8 +263,6 @@ class Evaluation(Directories, WriteDirectory):
             self.Hists += CompilerCombinedHist([[AccHist[l], AccHist[int(len(AccHist)/2) + l]] for l in range(int(len(AccHist)/2))], 
                     [epoch -1 for epoch in self._Epochs], "Training/Validation Accuracy Feature: " + key, "Accuracy", "Entries", 
                     "Epoch", Out_Dir + "/" + key + "/Histogram")
-
-
 
             LossLine = []
             tmp = {epoch : self._TrainingLoss[epoch][key]["_Merged"] for epoch in self._Epochs}
@@ -526,6 +526,129 @@ class TorchScriptModel(Notification):
 
 
 
+class Reconstructor(ModelImporter, Notification):
+    def __init__(self, Model, Sample):
+        Notification.__init__(self)
+        self.VerboseLevel = 0
+        self.Caller = "Reconstructor"
+        self.TruthMode = False
+        self._init = False
+        
+        if Sample.is_cuda:
+            self.Device = "cuda"
+        else:
+            self.Device = "cpu"
+        self.Model = Model
+        self.Sample = Sample
+        self.InitializeModel()
+    
+    def Prediction(self):
+        if self.TruthMode:
+            self._Results = self.Sample
+        else:
+            self.Model.eval()
+            self.MakePrediction(Batch.from_data_list([self.Sample]))
+            self._Results = self.Output(self.ModelOutputs, self.Sample) 
+            self._Results = { "O_" + i : self._Results[i][0] for i in self._Results}
+
+    def MassFromNodeFeature(self, TargetFeature, pt = "N_pt", eta = "N_eta", phi = "N_phi", e = "N_energy"):
+        if self.TruthMode:
+            TargetFeature = "N_T_" + TargetFeature
+        else:
+            TargetFeature = "O_" + TargetFeature
+
+        self.Prediction()
+        edge_index = self.Sample.edge_index
+
+        # Get the prediction of the sample 
+        pred = self._Results[TargetFeature].to(dtype = int).view(1, -1)[0]
+        
+        # Filter out the nodes which are not equally valued and apply masking
+        mask = pred[edge_index[0]] == pred[edge_index[1]]
+
+        # Only keep nodes of the same classification 
+        edge_index_s = edge_index[0][mask == True]
+        edge_index_r = edge_index[1][mask == True]
+        edge_index = torch.cat([edge_index_s, edge_index_r]).view(2, -1)
+        
+        # Create a classification matrix nclass x nodes 
+        print(pred)
+        clf = torch.zeros((len(torch.unique(pred)), len(pred)), device = edge_index.device)
+        idx = torch.cat([pred[edge_index[0]], edge_index[0]], dim = 0).view(2, -1)
+        print(idx)
+        clf[idx[0], idx[1]] += 1
+
+        # Convert the sample kinematics into cartesian and perform a vector aggregation 
+        FV = torch.cat([self.Sample[pt], self.Sample[eta], self.Sample[phi], self.Sample[e]], dim = 1)
+        FV = LV.TensorToPxPyPzE(FV)        
+        pt_ = torch.mm(clf, FV[:, 0].view(-1, 1))
+        eta_ = torch.mm(clf, FV[:, 1].view(-1, 1))
+        phi_ = torch.mm(clf, FV[:, 2].view(-1, 1))
+        e_ = torch.mm(clf, FV[:, 3].view(-1, 1))
+        FourVec = torch.cat([pt_, eta_, phi_, e_], dim = 1)
+        return LV.MassFromPxPyPzE(FourVec)/1000
+ 
+    def MassFromEdgeFeature(self, TargetFeature, pt = "N_pt", eta = "N_eta", phi = "N_phi", e = "N_energy"):
+        if self.TruthMode:
+            TargetFeature = "E_T_" + TargetFeature
+        else:
+            TargetFeature = "O_" + TargetFeature
+
+        self.Prediction()
+        edge_index = self.Sample.edge_index
+        
+        # Get the prediction of the sample and extract from the topology the number of unique classes
+        edges = self._Results[TargetFeature] 
+        pred_edge_i = edge_index[0].view(-1, 1)[edges == 1]
+        pred_edge_j = edge_index[1].view(-1, 1)[edges == 1]
+
+        Pmu = torch.cat([self._Results[pt], self._Results[eta], self._Results[phi], self._Results[e]], dim = 1)
+        Pmu = LV.TensorToPxPyPzE(Pmu)
+      
+        Pmu_n = torch.zeros(Pmu.shape, device = Pmu.device)
+        Pmu_n[pred_edge_i] += Pmu[pred_edge_j] 
+        Pmu_n = Pmu_n.unique(dim = 0)
+        mass = LV.MassFromPxPyPzE(Pmu_n)/1000
+        mass = mass.unique(dim = 0)
+        print(mass[mass != 0])
+       
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class ModelComparison(Reconstructor, Directories, WriteDirectory):
 
     def __init__(self):
@@ -541,6 +664,7 @@ class ModelComparison(Reconstructor, Directories, WriteDirectory):
         self.OutputCollection["E_Truth"] = {}
         self.OutputCollection["N_Truth"] = {}
         self._init = None
+        self.OutputDirectory = "./"
 
     def AddModel(self, model, CustomMap = []):
         name =  model.ModelDirectoryName
@@ -567,12 +691,19 @@ class ModelComparison(Reconstructor, Directories, WriteDirectory):
                 M.FinalizeOutput()
                 Epochs += [[epoch[1], M]]
                 self.OutputCollection[name][epoch[1]] = {}
+                if int(epoch[1]) == 2:
+                    break
             self.ModelDirectoryTScript[name] = Epochs
 
     def _Loop(self, Sample, feat, pt, eta, phi, e, Edge):
-        def Clean(inpt, out = []):
+        def Clean(inpt):
+            out = []
             for i in inpt:
-                out.append(float(i))
+                if i.shape[0] == 1 and len(i) != 0:
+                    print(i)
+                    #out.append(float(i[0]))
+                else:
+                    print(i)
             return out
 
         out = []
@@ -584,7 +715,7 @@ class ModelComparison(Reconstructor, Directories, WriteDirectory):
             else:
                 val = self.MassFromNodeFeature(feat, "N_" + pt, "N_" + eta, "N_" + phi, "N_" + e)
             
-            out += Clean(val)
+            #out += Clean(val)
         return out
 
     def _Rebuild(self, Sample, pt, eta, phi, e, varname, Level):
@@ -624,3 +755,76 @@ class ModelComparison(Reconstructor, Directories, WriteDirectory):
 
     def RebuildMassNode(self, Sample, varname_pt, varname_eta, varname_phi, varname_energy, ModelOutputVaribleName):
         self._Rebuild(Sample, varname_pt, varname_eta, varname_phi, varname_energy, ModelOutputVaribleName, "Node")
+
+    def _CompilePlots(self, smpl_key, metric, mode, Min = None, Max = None):
+        def MakeLine(Name, yTitle = "Accuracy", Logarithmic = False):
+            line = TLine(xData = [], yData = [], up_yData = [], down_yData = [], 
+                    Title = Name, xTitle = "Epoch", yTitle = yTitle, 
+                    Style = "ATLAS", Logarithmic  = Logarithmic, yMin = Min, yMax = Max)
+            return line
+        
+       
+        EpochModelMap = {}
+        NodesEpochModelMap = {}
+        for name in self.Models:
+            for ep in self.Models[name]._Epochs:
+                try:
+                    lst = getattr(self.Models[name], "_TrainingAccuracy")
+                except:
+                    self.Models[name].MakeLog()
+                    lst = getattr(self.Models[name], "_TrainingAccuracy")
+
+                for feat in lst[ep]:
+                    
+                    if feat not in EpochModelMap:
+                        EpochModelMap[feat] = {}
+                    if name not in EpochModelMap[feat]:
+                        EpochModelMap[feat][name] = MakeLine(name, metric)
+
+                    EpochModelMap[feat][name].xData += [int(ep)]
+                    EpochModelMap[feat][name].yData += [lst[ep][feat]["_Merged"][0]]
+                    EpochModelMap[feat][name].up_yData += [lst[ep][feat]["_Merged"][1]]
+                    EpochModelMap[feat][name].down_yData += [lst[ep][feat]["_Merged"][2]]
+                    for i in lst[ep][feat]:
+                        if "_Merged" == i:
+                            continue
+
+                        if i not in NodesEpochModelMap:
+                            NodesEpochModelMap[i] = {}
+                        if feat not in NodesEpochModelMap[i]:
+                            NodesEpochModelMap[i][feat] = {}
+                        if name not in NodesEpochModelMap[i][feat]:
+                            NodesEpochModelMap[i][feat][name] = MakeLine(name, metric)
+    
+                        NodesEpochModelMap[i][feat][name].xData += [int(ep)]
+                        NodesEpochModelMap[i][feat][name].yData += [lst[ep][feat][i][0]]
+                        NodesEpochModelMap[i][feat][name].up_yData += [lst[ep][feat][i][1]]
+                        NodesEpochModelMap[i][feat][name].down_yData += [lst[ep][feat][i][2]]
+        
+        for feat in EpochModelMap:
+            Figure = CombineTLine(Title = metric + " Comparison of '" + feat + "' Feature for Model Instances", 
+                            Filename = metric + "_" + feat + "_All", yMin = Min, yMax = Max)
+
+            Figure.Lines += list(EpochModelMap[feat].values())
+            Figure.SaveFigure(self.OutputDirectory + "/ModelComparison/" + mode + "/" + feat)
+
+        for nodes in NodesEpochModelMap:
+            for feat in NodesEpochModelMap[nodes]:
+                Figure = CombineTLine(Title = metric + " Comparison of '" + feat + "' Feature for Model Instances for Nodes: " + str(nodes), 
+                                Filename = feat + "_Node_" + str(nodes), yMin = Min, yMax = Max)
+
+                Figure.Lines += list(NodesEpochModelMap[nodes][feat].values())
+                Figure.SaveFigure(self.OutputDirectory + "/ModelComparison/" + mode + "/" + feat + "/" + metric + "_Nodes")
+
+    def MakePlots(self):
+        self.MakeDir(self.OutputDirectory + "/ModelComparison")
+        self.MakeDir(self.OutputDirectory + "/Epochs")
+
+
+        self._ImportModelsTS()
+        self._CompilePlots("_TrainingAccuracy", "Accuracy", "Training", 0, 1.2)
+        self._CompilePlots("_ValidationAccuracy", "Accuracy", "Validation", 0, 1.2)
+
+        self._CompilePlots("_TrainingLoss", "Loss", "Training", 0)
+        self._CompilePlots("_ValidationLoss", "Loss", "Validation", 0)
+
