@@ -6,50 +6,41 @@ import random
 from AnalysisTopGNN.Plotting import *
 
 def GetSampleDetails(Directory):
-    Dir = Directory + "/DataLoaderFileTraceDump/"
-    DataContainer = Dir + "/DataContainer.pkl"
+    Dir = Directory + "/FileTraces/"
+    #DataContainer = Dir + "/DataContainer.pkl"
     FileTrace = Dir + "/FileTraces.pkl"
     TrainingSample = Dir + "/TrainingSample.pkl"
-    ValidationSample = Dir + "/ValidationSample.pkl"
+    #ValidationSample = Dir + "/ValidationSample.pkl"
+    
 
-    DataContainer = UnpickleObject(DataContainer) # <= holds path Hash for each event 
     FileTrace = UnpickleObject(FileTrace) # <= Holds the index for each file 
     TrainingSample = UnpickleObject(TrainingSample) # <= Holds the hash for each n-nodes
-    ValidationSample = UnpickleObject(ValidationSample)
 
-    return {"DataContainer" : DataContainer, 
-            "FileTrace" : FileTrace, 
-            "TrainingSample" : TrainingSample, 
-            "ValidationSample" : ValidationSample}
+    return {"DataContainer" : FileTrace["SampleMap"], 
+            "FileTrace" : {k : FileTrace[k] for k in FileTrace if k != "SampleMap"}, 
+            "TrainingSample" : TrainingSample["Training"], 
+            "ValidationSample" : TrainingSample["Validation"]}
 
 def BuildSymlinksToHDF5(Directory):
     D = Directories()
     D.VerboseLevel = 0
-    x = D.ListFilesInDir(Directory + "/DataLoader")
-    dest = Directory + "/DataLoader/HDF5/"
+    x = D.ListFilesInDir(Directory + "/DataCache", [".hdf5"])
+    dest = Directory + "/HDF5/"
     
+    l = len(x)
+    it = 0
     for i in x:
         name = i.split("/")[-1]
         os.symlink(i, dest + name)
-        print(name)
+        print(name, round(float(it/l)*100, 3))
+        it+=1
+
 
 def RetrieveSamples(Directory):
-    #def function(F, inpt = Directory + "/DataLoader/HDF5/", out = []):
-    #    exp = ExportToDataScience()
-    #    exp.VerboseLevel = 0
-    #    for i in F:
-    #        out.append([i, exp.ImportEventGraph(i, inpt)])
-    #    del exp
-    #    return out
 
-   
-    #TH = Threading(list(F.values()), function, threads = 6)
-    #TH.Start()
-    #Data = {}
-    #for i in TH._lists:
-    #    Data[i[0]] = i[1] 
 
-    F = UnpickleObject(Directory + "/DataLoaderFileTraceDump/DataContainer.pkl")
+    F = UnpickleObject(Directory + "/FileTraces/FileTraces.pkl")
+    F = F["SampleMap"]
     Data = {}
     exp = ExportToDataScience()
     
@@ -57,12 +48,13 @@ def RetrieveSamples(Directory):
     random.shuffle(lst)
 
     it = 0
+    lim = 100 #len(lst)
     for i in lst:
-        print("--> " + str(round(float(it / 1000)*100, 4)) + "%")
-        Data[F[i]] = list(exp.ImportEventGraph(F[i], Directory + "/DataLoader/HDF5/").values())[0]
+        print("--> " + str(round(float(it / lim)*100, 4)) + "%")
+        Data[F[i]] = list(exp.ImportEventGraph(F[i], Directory + "/HDF5/").values())[0]
         it+=1
         
-        if it == 1000:
+        if it == lim:
             break
     return Data
 
@@ -88,12 +80,12 @@ def NodeStatistics(TargetDir, DataContainer, HashMap, TrainingSample, Validation
         if DataContainer[i] == None:
             continue
         obj = DataContainer[i]
-        hsh = HashMap[i]
-    
+        
         n_nd = int(obj.num_nodes)
-        if hsh in TrainingSample:
+        
+        if i in TrainingSample:
             tr_.append(n_nd)
-        if hsh in ValidationSample:
+        if i in ValidationSample:
             val_.append(n_nd)
         all_.append(n_nd)
     
@@ -168,7 +160,6 @@ def ProcessStatistics(TargetDir, DataContainer, HashMap, TrainingSample, Validat
         if DataContainer[i] == None:
             continue
         obj = DataContainer[i]
-        hsh = HashMap[i]
     
         n_nd = int(obj.num_nodes)
         indx = int(obj.i) 
@@ -179,11 +170,11 @@ def ProcessStatistics(TargetDir, DataContainer, HashMap, TrainingSample, Validat
             val_[smpl_] = []
             tr_[smpl_] = []
         
-        if hsh in TrainingSample:
+        if i in TrainingSample:
             tr_[smpl_].append(n_nd)
             tr_n.append(n_nd)
 
-        if hsh in ValidationSample:
+        if i in ValidationSample:
             val_[smpl_].append(n_nd)
             val_n.append(n_nd)
 

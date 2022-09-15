@@ -5,7 +5,7 @@ from AnalysisTopGNN.Reconstruction import Reconstructor
 import statistics
 import math
 import torch
-from AnalysisTopGNN.Generators import ModelImporter
+from AnalysisTopGNN.Generators import ModelImporter, TorchScriptModel, Optimizer
 import LorentzVector as LV
 
 class Evaluation(Directories, WriteDirectory):
@@ -60,12 +60,13 @@ class Evaluation(Directories, WriteDirectory):
                 self._Stats = i
             else:
                 self._Epochs[int(epoch)] = i
-
         TH = Threading(list(self._Epochs.values()), function, threads = self.Threads)
         TH.Start()
-        
+        self._nNodes = []
         for i in self._Epochs:
             self._Epochs[i] = TH._lists[i-1]
+            self._nNodes += self._Epochs[i]["Nodes"]
+        self._nNodes = list(set(self._nNodes))
         self._Stats = UnpickleObject(self._Stats)
         
         for i in ["Samples", "Tree", "Level", "SelfLoop", "Start", "End"]:
@@ -74,7 +75,6 @@ class Evaluation(Directories, WriteDirectory):
         self._ModelTrainingParameters |= self._Stats["Model"]
 
         self._ModelKeys = list(self._Stats["Training_Accuracy"])
-        self._nNodes = list(set([i for t in self._Stats["n_Node_Files"] for i in t]))
 
         self._TrainingInformation["EpochTime"] = []
         self._TrainingInformation["AverageFoldTime"] = []
@@ -134,7 +134,7 @@ class Evaluation(Directories, WriteDirectory):
                 self._SkippedNodes[node] = []
             if len(inpt) == 0:
                 return [None, None, None, None] 
-
+            inpt = [float(k) for k in inpt]
             mean = statistics.mean(inpt)
             stdErr = statistics.pstdev(inpt, mean)/math.sqrt(len(inpt))
             return [mean, stdErr, stdErr, inpt]
@@ -385,342 +385,70 @@ class Evaluation(Directories, WriteDirectory):
             Model += ["".join([key + " | " + str(s[key][i]) + " | " for key in s])]
 
         self.WriteTextFile(Model, "/Summary", "RunSummary") 
-   
 
-class TorchScriptModel(Notification):
+class ModelComparison(Reconstructor, Directories, WriteDirectory, Optimizer):
 
-    def __init__(self, ModelPath, Device = "cpu", **kargs):
-        self.Verbose = True
-        self.VerboseLevel = 3
-        self.Caller = "TorchScriptModel"
-        self.ModelPath = ModelPath
-        self.key_o = {}
-        self.key_l = {}
-        self.key_c = {}
-        self._it = 0
-
-        key = { str(l) : "" for l in open(ModelPath, "rb").readlines() if "/extra/" in str(l)}
-        out = []
-        for k in list(set([l.split("/")[-1] for t in key for l in t.split("\\") if "/extra/" in l])):
-            x = "FB".join(k.split("FB")[:-1])
-            if x != "":
-                out.append(x)
-            x = "PK".join(k.split("PK")[:-1])
-            if x != "":
-                out.append(x)
-        
-        key = {k : "" for k in list(set(out))}
-        self._model = torch.jit.load(self.ModelPath, _extra_files = key)
-
-        self.inpt_keys = [k.replace(")", "").replace(",", "") for k in str(self._model.forward.schema).split(" ") if "Tensor" not in k and "->" not in k][1:]
-        self.forward() 
-
-        outputs = []
-        for i in self._model.graph.outputs():
-            line = str(i).replace("\n", "").split("=")[1]
-            line = ["%" + k.replace(")", "").replace(",", "").replace(" ", "") for k in line.split("%") if "::" not in k]
-            outputs += line
-            self._it += 1    
-
-        if isinstance(kargs, dict):
-            for i in list(kargs.values())[0]:
-                self.GetNodeAsOutput(**i)
-            return 
-
-        self.key_o |= { k : key[k] for k in key if k.startswith("O_") }
-        self.key_l |= { k.lstrip("L_") : key[k] for k in key if k.startswith("L_") }
-        self.key_c |= { k.lstrip("C_") : key[k] for k in key if k.startswith("C_") }
-
-        self.key_o |= {k : [outputs[j], None] for k, j in zip(self.key_o, range(len(outputs)))}
-        
-        if len(outputs) == len(key):
-            return  
-
-        self.Warning("OUTPUT NUMBERS DO NOT MATCH FOUND KEYS! THE FOLLOWING NODE MAPPING HAS BEEN PRODUCED:")
-        for i in self.key_o:
-            if isinstance(self.key_o[i], list):
-                self.Warning("KEY: " + i + " NODE: " + str(self.key_o[i][0]))
-            else:
-                self.Warning("KEY MISSING: " + i)
-                self.key_o[i] = [-1, None]
-        
-        self.Warning(">--------- Possible Nodes ---------<")
-        for i in self._model.graph.nodes():
-            if "NoneType" not in str(i):
-                continue 
-            n = str(i).replace("\n", "").split("=")
-            self.Warning("Name: " + n[0] + " | Operation: " + "=".join(n[1:]))
-        self.Warning(">----------------------------------<")
-
-    def forward(self):
-        self.forward = self
-        self.forward.__code__ = self
-        self.forward.__code__.co_varnames = self.inpt_keys
-        self.forward.__code__.co_argcount = len(self.inpt_keys)
-
-    def ShowNodes(self):
-        self.Notify("------------ BEGIN GRAPH NODES -----------------")
-        for i in self._model.graph.nodes():
-            n = str(i).replace("\n", "").split(" : ")
-            f = n[1].split("#")
-            string = "Name: " + n[0] + " | Operation: " + f[0] 
-            if len(f) > 1:
-                string += " | Function Call: " + f[1].split("/")[-1]
-            self.Notify(string)
-        self.Notify("------------ END GRAPH NODES -----------------")
-
-    def GetNodeAsOutput(self, name, node, loss, classification):
-        if isinstance(name, str):
-            names= {"O_" + name : node}
-            self.key_o |= names
-        else:
-            return self.Warning("INVALID NAMES GIVEN!")
-        
-        for i in self._model.graph.nodes():
-            n_ref = str(i).split(" = ")[0].split(":")[0].replace(" ", "")
-            if n_ref != node:
-                continue
-            self.key_o["O_" + name] = [n_ref, list(i.outputs())[0]]
-            self.key_l[name] = loss
-            self.key_c[name] = classification
-
-    def FinalizeOutput(self):
-        self.Notify(">--------- Final Output Mapping ---------<")
-        tmp = {}
-        for i in self.key_o:
-            key = i.lstrip("O_")
-            if isinstance(self.key_c[key], bytes):
-                self.key_c[key] = bool(self.key_c[key].decode().split("->")[0])
-                self.key_l[key] = str(self.key_l[key].decode()).split("->")[0]
-                self.GetNodeAsOutput(key, self.key_o[i][0], self.key_l[key], self.key_c[key]) 
-
-            out = self.key_o[i]
-            if out == -1:
-                continue
-
-            self.Notify("NODE REFERENCE: " + out[0] + " FEATURE NAME: " + key + " LOSS: " + self.key_l[key] + " CLASSIFICATION: " + str(self.key_c[key]))
-            setattr(self, i, None)
-            setattr(self, "L_" + key, self.key_l[key])
-            setattr(self, "C_" + key, self.key_c[key])
-            self._model.graph.registerOutput(out[1])
-            tmp[i] = self._it
-            self._it += 1
-        self._it = None
-        self.key_o = tmp
-        self._model.graph.makeMultiOutputIntoTuple()
-
-    def train(self):
-        self._model.train()
-
-    def eval(self):
-        self._model.eval()
-    
-    def __call__(self, **kargs):
-        out = self._model(**kargs)
-        for i in self.key_o:
-            setattr(self, i, out[self.key_o[i]])
-
-    def to(self, device):
-        self._model.to(device)
-
-
-
-
-class Reconstructor(ModelImporter, Notification):
-    def __init__(self, Model, Sample):
-        Notification.__init__(self)
-        self.VerboseLevel = 0
-        self.Caller = "Reconstructor"
-        self.TruthMode = False
-        self._init = False
-        
-        if Sample.is_cuda:
-            self.Device = "cuda"
-        else:
-            self.Device = "cpu"
-        self.Model = Model
-        self.Sample = Sample
-        self.InitializeModel()
-    
-    def Prediction(self):
-        if self.TruthMode:
-            self._Results = self.Sample
-        else:
-            self.Model.eval()
-            self.MakePrediction(Batch.from_data_list([self.Sample]))
-            self._Results = self.Output(self.ModelOutputs, self.Sample) 
-            self._Results = { "O_" + i : self._Results[i][0] for i in self._Results}
-
-    def MassFromNodeFeature(self, TargetFeature, pt = "N_pt", eta = "N_eta", phi = "N_phi", e = "N_energy"):
-        if self.TruthMode:
-            TargetFeature = "N_T_" + TargetFeature
-        else:
-            TargetFeature = "O_" + TargetFeature
-
-        self.Prediction()
-        edge_index = self.Sample.edge_index
-
-        # Get the prediction of the sample 
-        pred = self._Results[TargetFeature].to(dtype = int).view(1, -1)[0]
-        
-        # Filter out the nodes which are not equally valued and apply masking
-        mask = pred[edge_index[0]] == pred[edge_index[1]]
-
-        # Only keep nodes of the same classification 
-        edge_index_s = edge_index[0][mask == True]
-        edge_index_r = edge_index[1][mask == True]
-        edge_index = torch.cat([edge_index_s, edge_index_r]).view(2, -1)
-        
-        # Create a classification matrix nclass x nodes 
-        print(pred)
-        clf = torch.zeros((len(torch.unique(pred)), len(pred)), device = edge_index.device)
-        idx = torch.cat([pred[edge_index[0]], edge_index[0]], dim = 0).view(2, -1)
-        print(idx)
-        clf[idx[0], idx[1]] += 1
-
-        # Convert the sample kinematics into cartesian and perform a vector aggregation 
-        FV = torch.cat([self.Sample[pt], self.Sample[eta], self.Sample[phi], self.Sample[e]], dim = 1)
-        FV = LV.TensorToPxPyPzE(FV)        
-        pt_ = torch.mm(clf, FV[:, 0].view(-1, 1))
-        eta_ = torch.mm(clf, FV[:, 1].view(-1, 1))
-        phi_ = torch.mm(clf, FV[:, 2].view(-1, 1))
-        e_ = torch.mm(clf, FV[:, 3].view(-1, 1))
-        FourVec = torch.cat([pt_, eta_, phi_, e_], dim = 1)
-        return LV.MassFromPxPyPzE(FourVec)/1000
- 
-    def MassFromEdgeFeature(self, TargetFeature, pt = "N_pt", eta = "N_eta", phi = "N_phi", e = "N_energy"):
-        if self.TruthMode:
-            TargetFeature = "E_T_" + TargetFeature
-        else:
-            TargetFeature = "O_" + TargetFeature
-
-        self.Prediction()
-        edge_index = self.Sample.edge_index
-        
-        # Get the prediction of the sample and extract from the topology the number of unique classes
-        edges = self._Results[TargetFeature] 
-        pred_edge_i = edge_index[0].view(-1, 1)[edges == 1]
-        pred_edge_j = edge_index[1].view(-1, 1)[edges == 1]
-
-        Pmu = torch.cat([self._Results[pt], self._Results[eta], self._Results[phi], self._Results[e]], dim = 1)
-        Pmu = LV.TensorToPxPyPzE(Pmu)
-      
-        Pmu_n = torch.zeros(Pmu.shape, device = Pmu.device)
-        Pmu_n[pred_edge_i] += Pmu[pred_edge_j] 
-        Pmu_n = Pmu_n.unique(dim = 0)
-        mass = LV.MassFromPxPyPzE(Pmu_n)/1000
-        mass = mass.unique(dim = 0)
-        print(mass[mass != 0])
-       
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-class ModelComparison(Reconstructor, Directories, WriteDirectory):
-
-    def __init__(self):
+    def __init__(self, Data):
         self.VerboseLevel = 0
         self.Verbose = True 
         self.Caller = "ModelComparison"
         self.Threads = 12
         self.Device = "cuda"
         self.Models = {}
-        self.ModelDirectoryONNX = {}
         self.ModelDirectoryTScript = {}
         self.OutputCollection = {}
         self.OutputCollection["E_Truth"] = {}
         self.OutputCollection["N_Truth"] = {}
         self._init = None
         self.OutputDirectory = "./"
+        self.Sample = None
+        self.Data = Data
 
     def AddModel(self, model, CustomMap = []):
         name =  model.ModelDirectoryName
         self.Models[name] = model
-        self.ModelDirectoryONNX[name] = self.ListFilesInDir(model.SourceDirectory + "/" + name + "/ONNX")
         self.ModelDirectoryTScript[name] = self.ListFilesInDir(model.SourceDirectory + "/" + name + "/TorchScript")
         self.ModelDirectoryTScript["_MAP_"+name] = CustomMap
 
-    def _ImportModelsTS(self):
+    def __ImportModelsTS(self):
         for name in self.ModelDirectoryTScript:
             if name.startswith("_MAP_"):
                 continue 
             files = self.ModelDirectoryTScript[name]
             maps = self.ModelDirectoryTScript["_MAP_" + name]
             self.OutputCollection[name] = {}
-            
             Epochs = []
             self.Notify("IMPORTING MODEL TORCH SCRIPT:" + name)
-            for i in files:
-                epoch = i.split("/")[-1].split("_")
-                f = epoch[-1].replace(".pt", "")
-                self.Notify("-> Imported EPOCH " + str(epoch[1]) + " / " + str(f))
-                M = TorchScriptModel(i, Device = self.Device, maps = maps) 
-                M.FinalizeOutput()
-                Epochs += [[epoch[1], M]]
-                self.OutputCollection[name][epoch[1]] = {}
-                if int(epoch[1]) == 2:
-                    break
+            
+            torchlist = {}
+            for i in range(len(files)):
+                epoch = int(files[i].split("/")[-1].split("_")[1])
+                torchlist[epoch] = files[i]
+                files[i] = epoch
+             
+            files.sort()
+            for i in files[1:]:
+                M = TorchScriptModel(torchlist[i], maps = maps) 
+                M.Finalize()
+                Epochs += [[i, M]]
+                self.OutputCollection[name][i] = {}
+                self.Notify("-> Imported EPOCH " + str(i) + " / " + str(len(files)-1))
             self.ModelDirectoryTScript[name] = Epochs
 
-    def _Loop(self, Sample, feat, pt, eta, phi, e, Edge):
-        def Clean(inpt):
-            out = []
-            for i in inpt:
-                if i.shape[0] == 1 and len(i) != 0:
-                    print(i)
-                    #out.append(float(i[0]))
-                else:
-                    print(i)
-            return out
-
+    def __Loop(self, Sample, feat, pt, eta, phi, e, Edge):
         out = []
         for i in list(Sample.values()):
             i.to(device = self.Device)
-            self.Sample = i
             if Edge:
-                val = self.MassFromEdgeFeature(feat, "N_" + pt, "N_" + eta, "N_" + phi, "N_" + e)
+                val = self.__call__(i).MassFromEdgeFeature(feat, "N_" + pt, "N_" + eta, "N_" + phi, "N_" + e)
             else:
-                val = self.MassFromNodeFeature(feat, "N_" + pt, "N_" + eta, "N_" + phi, "N_" + e)
-            
-            #out += Clean(val)
+                val = self.__call__(i).MassFromNodeFeature(feat, "N_" + pt, "N_" + eta, "N_" + phi, "N_" + e)
+            out += val.tolist()
         return out
 
-    def _Rebuild(self, Sample, pt, eta, phi, e, varname, Level):
+    def __Rebuild(self, Sample, pt, eta, phi, e, varname, Level):
         if self._init == None: 
-            self._ImportModelsTS()
+            self.__ImportModelsTS()
         
         if Level == "Edge":
             key = "E_Truth"
@@ -735,44 +463,37 @@ class ModelComparison(Reconstructor, Directories, WriteDirectory):
          
             if varname not in self.OutputCollection[key]:
                 self.TruthMode = True
-                self.OutputCollection[key][varname] = self._Loop(Sample, varname, pt, eta, phi, e, edge) 
+                self.OutputCollection[key][varname] = self.__Loop(Sample, varname, pt, eta, phi, e, edge) 
                 self.TruthMode = False 
-            for smpl in list(Sample.values()):
-                break
-            
-            smpl.to(device = self.Device)
-            self.Sample = smpl
             
             for ep in range(len(self.OutputCollection[i])):
                 epoch = self.ModelDirectoryTScript[i][ep][0]
                 self.Model = self.ModelDirectoryTScript[i][ep][1]
                 self._init = False
-                self.InitializeModel()
-                self.OutputCollection[i][epoch][varname] = self._Loop(Sample, varname, pt, eta, phi, e, edge)
+                self.OutputCollection[i][epoch][varname] = self.__Loop(Sample, varname, pt, eta, phi, e, edge)
+    
+    def RebuildMassEdge(self, ModelOutputVaribleName, varname_pt = "pT", varname_eta = "eta", varname_phi = "phi", varname_energy = "energy"):
+        self.__Rebuild(self.Data, varname_pt, varname_eta, varname_phi, varname_energy, ModelOutputVaribleName, "Edge")
 
-    def RebuildMassEdge(self, Sample, varname_pt, varname_eta, varname_phi, varname_energy, ModelOutputVaribleName):
-        self._Rebuild(Sample, varname_pt, varname_eta, varname_phi, varname_energy, ModelOutputVaribleName, "Edge")
+    def RebuildMassNode(self, ModelOutputVaribleName, varname_pt = "pT", varname_eta = "eta", varname_phi = "phi", varname_energy = "energy"):
+        self.__Rebuild(self.Data, varname_pt, varname_eta, varname_phi, varname_energy, ModelOutputVaribleName, "Node")
 
-    def RebuildMassNode(self, Sample, varname_pt, varname_eta, varname_phi, varname_energy, ModelOutputVaribleName):
-        self._Rebuild(Sample, varname_pt, varname_eta, varname_phi, varname_energy, ModelOutputVaribleName, "Node")
-
-    def _CompilePlots(self, smpl_key, metric, mode, Min = None, Max = None):
+    def __CompilePlots(self, smpl_key, metric, mode, Min = None, Max = None):
         def MakeLine(Name, yTitle = "Accuracy", Logarithmic = False):
             line = TLine(xData = [], yData = [], up_yData = [], down_yData = [], 
                     Title = Name, xTitle = "Epoch", yTitle = yTitle, 
                     Style = "ATLAS", Logarithmic  = Logarithmic, yMin = Min, yMax = Max)
             return line
         
-       
         EpochModelMap = {}
         NodesEpochModelMap = {}
         for name in self.Models:
             for ep in self.Models[name]._Epochs:
                 try:
-                    lst = getattr(self.Models[name], "_TrainingAccuracy")
+                    lst = getattr(self.Models[name], smpl_key)
                 except:
                     self.Models[name].MakeLog()
-                    lst = getattr(self.Models[name], "_TrainingAccuracy")
+                    lst = getattr(self.Models[name], smpl_key)
 
                 for feat in lst[ep]:
                     
@@ -820,11 +541,13 @@ class ModelComparison(Reconstructor, Directories, WriteDirectory):
         self.MakeDir(self.OutputDirectory + "/ModelComparison")
         self.MakeDir(self.OutputDirectory + "/Epochs")
 
+        self.__ImportModelsTS()
+        self.__CompilePlots("_TrainingAccuracy", "Accuracy", "Training", 0, 1.2)
+        self.__CompilePlots("_ValidationAccuracy", "Accuracy", "Validation", 0, 1.2)
 
-        self._ImportModelsTS()
-        self._CompilePlots("_TrainingAccuracy", "Accuracy", "Training", 0, 1.2)
-        self._CompilePlots("_ValidationAccuracy", "Accuracy", "Validation", 0, 1.2)
+        self.__CompilePlots("_TrainingLoss", "Loss", "Training", 0)
+        self.__CompilePlots("_ValidationLoss", "Loss", "Validation", 0)
+        
+        
 
-        self._CompilePlots("_TrainingLoss", "Loss", "Training", 0)
-        self._CompilePlots("_ValidationLoss", "Loss", "Validation", 0)
-
+                

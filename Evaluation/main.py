@@ -3,110 +3,94 @@ from AnalysisTopGNN.IO import Directories, WriteDirectory
 from AnalysisTopGNN.IO import UnpickleObject, PickleObject
 from AnalysisTopGNN.Plotting import *
 
-
 from HelperFunctions import *
 from ModelFunctions import *
 
 
-SourceDir = "/CERN/AnalysisModelTraining/BasicBaseLineTruthJetSmall"
+SourceDir = "../BasicBaseLineModel/Dump/" # /CERN/AnalysisModelTraining/BasicBaseLineTruthJetSmall"
 TargetDir = "./BasicBaseLineModel/"
 
-D = Directories(SourceDir)
+D = Directories(SourceDir + "/Models")
 D.ListDirs()
 Dir = [i.split("/")[-1] for i in D.Files]
-
-#out = GetSampleDetails(SourceDir)
+out = GetSampleDetails(SourceDir)
 #BuildSymlinksToHDF5(SourceDir)
 #Data = RetrieveSamples(SourceDir)
 #PickleObject(Data, "HDF5")
 Data = UnpickleObject("HDF5")
-#
-#mp = {}
-#for i in out["DataContainer"]:
-#    hash_ = out["DataContainer"][i]
-#    if hash_ in Data:
-#        out["DataContainer"][i] = Data[hash_]
-#        mp[i] = hash_
-#    else:
-#        out["DataContainer"][i] = None
-#
-## Get a statistical breakdown of the data:
-## -> All; 
-##   n-Nodes, entries for process, Training/Validation of nodes
-##
-#DC = out["DataContainer"]
-#Tr = out["TrainingSample"]
-#Val = out["ValidationSample"]
-#
-## Reverse the lookup to hash = node
-#Tr = {i : j for j in Tr for i in Tr[j]} 
-#Val = {i : j for j in Val for i in Val[j]}
-#
-#
+
+mp = {}
+for i in out["DataContainer"]:
+    hash_ = out["DataContainer"][i]
+    if hash_ in Data:
+        out["DataContainer"][i] = Data[hash_]
+        mp[i] = hash_
+    else:
+        out["DataContainer"][i] = None
+
+# Get a statistical breakdown of the data:
+# -> All; 
+#   n-Nodes, entries for process, Training/Validation of nodes
+
+DC = out["DataContainer"]
+Tr = out["TrainingSample"]
+Val = out["ValidationSample"]
+
+# Reverse the lookup to hash = node
+Tr = [i for j in Tr for i in Tr[j]]
+Val = [i for j in Val for i in Val[j]]
+
 ## Node Statistics - General Sample
 #NodeStatistics(TargetDir, DC, mp, Tr, Val)
 #
 ## Process Statistics
 #ProcessStatistics(TargetDir, DC, mp, Tr, Val, out)
-#
 
 
-
-M = ModelComparison()
-pro = [
-        {"name": "edge", "node" : "%234", "classification" : "True", "loss" : "CEL"}, 
-        {"name": "from_res", "node" : "%512", "classification" : "True", "loss" : "CEL"}, 
-        #{"name": "signal_sample", "node" : "%538", "classification" : "True", "loss" : "CEL"}, 
-        #{"name": "from_top", "node" : "%329", "classification" : "True", "loss" : "CEL"}, 
+Name = [
+    {"name":"edge", "node":"%252", "loss":"CEL", "classifier" : True},
+    {"name":"from_res", "node":"556"},
+    {"name":"signal_sample", "node":"573"}, 
+    {"name":"from_top", "node":"347"}
     ]
-M.Device = "cuda"
-#W = WriteDirectory()
-#for i in Dir:
-#    if "_" not in i:
-#        continue
-#
-#    #W.MakeDir(TargetDir + i)
-#    #M = Metrics(i, SourceDir)
-#    #M.PlotStats(TargetDir + i)
-#
-#    Ev = Evaluation(SourceDir, i)
-#    Ev.ReadStatistics()
-#    Ev.EpochLoop()
-#    #Ev.MakePlots(TargetDir)
-#    Ev.MakeLog(TargetDir)
-#    break
-#PickleObject(Ev, "Model")
-Ev = UnpickleObject("Model")
-M.AddModel(Ev, pro)
-#M.RebuildMassEdge(Data, "pT", "eta", "phi", "energy", "edge")
-#M.RebuildMassNode(Data, "pT", "eta", "phi", "energy", "from_res")
+
+M = ModelComparison(Data)
+for i in Dir:
+    if "_" not in i:
+        continue
+    print(i)
+    Ev = Evaluation(SourceDir + "/Models/", i)
+    Ev.ReadStatistics()
+    Ev.EpochLoop()
+    #Ev.MakePlots(TargetDir)
+    Ev.MakeLog(TargetDir)
+    M.AddModel(Ev, Name)
+M.RebuildMassEdge("edge")
+M.RebuildMassNode("from_res")
 M.MakePlots()
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#TS = TorchScriptModel("./Epoch_0_100.pt", inpt = Name)
+##TS.AddOutput("edge", "252", "CEL", True)
+##TS.AddOutput("from_res", "556")
+##TS.AddOutput("signal_sample", "573")
+##TS.AddOutput("from_top", "347")
+#TS.Finalize()
+#TS.to("cuda")
+#
+##PickleObject(Data, "tmp")
+#Data = UnpickleObject("tmp")
+#r = Reconstructor(TS)
+#r.TruthMode = False
+#for i in Data:
+#    smpl = Data[i]
+#    smpl.to("cuda") 
+#    TS(**smpl.to_dict())
+#    mass = r(smpl).MassFromNodeFeature("from_top")
+#    print(mass) 
+#    mass = r(smpl).MassFromEdgeFeature("edge")
+#    print(mass)
 
 
 
