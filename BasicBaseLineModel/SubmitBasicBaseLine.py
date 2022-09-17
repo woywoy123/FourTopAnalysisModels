@@ -38,24 +38,24 @@ def DataLoaderConfig(Name):
 
 # ====== Event Loader ======== #
 EventLoaderConfig("ttbar", "ttbar")
-#EventLoaderConfig("SingleTop", "t")
-#EventLoaderConfig("BSM4Top", "tttt")
-#EventLoaderConfig("Zmumu", "Zmumu")
+EventLoaderConfig("SingleTop", "t")
+EventLoaderConfig("BSM4Top", "tttt")
+EventLoaderConfig("Zmumu", "Zmumu")
 
 
 # ====== Data Loader ======== #
 DataLoaderConfig("ttbar")
-#DataLoaderConfig("SingleTop")
-#DataLoaderConfig("BSM4Top")
-#DataLoaderConfig("Zmumu")
+DataLoaderConfig("SingleTop")
+DataLoaderConfig("BSM4Top")
+DataLoaderConfig("Zmumu")
 
 # ====== Merge ======= #
-Smpl = ["Data_ttbar"] #["Data_SingleTop", "Data_BSM4Top", "Data_ttbar", "Data_Zmumu"]
+Smpl = ["Data_ttbar", "Data_SingleTop", "Data_BSM4Top", "Data_ttbar", "Data_Zmumu"]
 Loader = Analysis()
 Loader.InputSample("ttbar")
-#Loader.InputSample("SingleTop")
-#Loader.InputSample("BSM4Top")
-#Loader.InputSample("Zmumu")
+Loader.InputSample("SingleTop")
+Loader.InputSample("BSM4Top")
+Loader.InputSample("Zmumu")
 Loader.MergeSamples = False
 Loader.GenerateTrainingSample = False
 Loader.ValidationSize = 20
@@ -67,7 +67,7 @@ TM1.RunName = "BaseLineTruthJet_MRK1"
 TM1.ONNX_Export = True
 TM1.TorchScript_Export = True
 TM1.kFold = 2
-TM1.Threads = 2
+TM1.Threads = 10
 TM1.Device = "cuda"
 TM1.Epochs = 10
 TM1.Model = BasicBaseLineTruthJet()
