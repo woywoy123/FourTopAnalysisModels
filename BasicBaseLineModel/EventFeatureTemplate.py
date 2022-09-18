@@ -2,14 +2,13 @@ import Templates.ParticleGeneric.EdgeFeature as ef
 import Templates.ParticleGeneric.NodeFeature as nf
 import Templates.ParticleGeneric.GraphFeature as gf
 
-import Templates.TruthTopChildren.NodeFeature as tc_nf
-
-import Templates.TruthJet.EdgeFeature as tj_ef
-import Templates.TruthJet.NodeFeature as tj_nf
-import Templates.TruthJet.GraphFeature as tj_gf
 from AnalysisTopGNN.Tools.ModelTesting import AddFeature
 
 def TruthJets():
+    import Templates.TruthJet.EdgeFeature as tj_ef
+    import Templates.TruthJet.NodeFeature as tj_nf
+    import Templates.TruthJet.GraphFeature as tj_gf
+
     # Node: Generic Particle Properties
     GenPartNF = {
             "eta" : nf.eta, 
@@ -63,8 +62,60 @@ def TruthJets():
     Features |= AddFeature("GT", GenPartTGF)
     return Features
 
-def ApplyFeatures(A):
-    Features = TruthJets()
+def TruthTopChildren():
+    import Templates.TruthTopChildren.NodeFeature as tc_nf
+    
+    # Node: Generic Particle Properties
+    GenPartNF = {
+            "eta" : nf.eta, 
+            "energy" : nf.energy, 
+            "pT" : nf.pT, 
+            "phi" : nf.phi, 
+            "mass" : nf.mass, 
+            "islep" : nf.islepton, 
+            "charge" : nf.charge, 
+    }
+    
+    # Graph: Generic Particle Properties
+    GenPartGF = {
+            "mu" : gf.mu, 
+            "met" : gf.met, 
+            "met_phi" : gf.met_phi, 
+    }
+    
+    # Truth Edge: Truth Children Properties
+    ChildrenTEF = {
+            "edge" : ef.Index, 
+    } 
+    
+    # Truth Node: Truth Children Properties
+    ChildrenTNF = {
+            "from_res" : tc_nf.FromRes, 
+    } 
+    
+    # Truth Graph: Generic Paritcle Properties
+    GenPartTGF = {
+            "nTops" : gf.nTops, 
+            "signal_sample" : gf.SignalSample
+    }
+    
+    Features = {}
+    Features |= AddFeature("NF", GenPartNF)
+    Features |= AddFeature("GF", GenPartGF)
+    Features |= AddFeature("ET", ChildrenTEF)
+    Features |= AddFeature("NT", ChildrenTNF)    
+    Features |= AddFeature("GT", GenPartTGF)
+
+    return Features
+ 
+
+def ApplyFeatures(A, Level):
+    if Level == "TruthChildren":
+        Features = TruthJets()
+
+    if Level == "TruthJets":
+        Features = TruthJets()
+
     for i in Features:
         base = "_".join(i.split("_")[1:])
         fx = Features[i]
