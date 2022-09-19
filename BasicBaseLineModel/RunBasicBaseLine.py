@@ -19,7 +19,7 @@ def BaseLineModelTruthJet(Files, Names, CreateCache):
 
     Model = BasicBaseLineTruthJet()
     Op = OptimizerTemplate(DL, Model)
-    Op.LearningRate = 0.0001
+    Op.LearningRate = 0.01
     Op.WeightDecay = 0.001
     Op.DefineOptimizer()
 
@@ -37,16 +37,18 @@ def BasicBaseLineTruthChildren(Files, Names, CreateCache):
  
     Model = BasicBaseLine()
     Op = OptimizerTemplate(DL, Model)
-    Op.LearningRate = 0.0001
-    Op.WeightDecay = 0.001
+    Op.LearningRate = 0.01
+    Op.WeightDecay = 0.1
+    #Op.DefaultOptimizer = "SGD"
     Op.DefineOptimizer()
 
+
     kill = {}
-    kill |= {"edge" : "R"}
+    kill |= {"edge" : "C"}
     #kill |= {"from_res" : "C"}
     #kill |= {"signal_sample": "C"}
     #kill |= {"from_top": "C"}
-    KillCondition(kill, 1000, Op, samples, 100000, sleep = 2, batched = 3)
+    KillCondition(kill, 1000, Op, samples, 100000, sleep = 2, batched = 10)
 
 
 if __name__ == "__main__":
