@@ -64,4 +64,55 @@ class BasicBaseLine(MessagePassing):
         topo = F.dropout(topo, training = self.training)
         self.O_edge = topo
         self.Counter[self.Counter >= 1] = 1
+
         return dense_to_sparse(self.Counter)[0]
+
+
+
+
+class BasicBaseLineRecursion(MessagePassing):
+
+    def __init__(self):
+        super().__init__(aggr = None, flow = "target_to_source")
+        self.O_edge = None
+        self.L_edge = "CEL"
+        self.C_edge = True
+
+        end = 1024
+        self._isMass = Seq(Linear(1, end), Sigmoid(), Linear(end, end), Sigmoid(), Linear(end, 2))
+        self._topo = Seq(Linear(6, end), Sigmoid(), Linear(end, end), Sigmoid(), Linear(end, 2))
+        self._it = 0
+
+    def forward(self, i, edge_index, E_T_edge, N_pT, N_eta, N_phi, N_energy, N_mass):
+        if self._it == 0:
+            self.device = N_pT.device
+            self.edge_mlp = torch.zeros((edge_index.shape[1], 2), device = self.device)
+            self.edge_count = torch.ones((edge_index.shape[1], 1), device = self.device)
+
+        Pmu = torch.cat([N_pT, N_eta, N_phi, N_energy], dim = 1)
+        Pmc = TensorToPxPyPzE(Pmu)
+        
+        edge_index = self.propagate(edge_index, Pmc = Pmc, Pmu = Pmu, Mass = N_mass, T_edge = E_T_edge)
+
+        exit()
+        return self.O_edge
+
+    def message(self, edge_index, Pmc_i, Pmc_j, Pmu_i, Pmu_j, Mass_i, Mass_j, T_edge):
+        e_dr = TensorDeltaR(Pmu_i, Pmu_j)
+        e_mass = MassFromPxPyPzE(Pmc_i + Pmc_j) / 1000
+        mlp_mass = self._isMass(e_mass) #torch.cat([e_mass, torch.abs(Mass_i - Mass_j)], dim = 1)) 
+        return edge_index[1], mlp_mass, e_mass, Pmc_j
+
+    def aggregate(self, message, index, Pmc, Pmu, Mass):
+        edge_index, mlp_mass, e_mass, Pmc_j = message
+        edge = mlp_mass.max(dim = 1)[1]
+
+        self.edge_count[index == edge_index] = 0
+        Pmc_i = Pmc_j[index == edge_index] # Self loops
+        Pmc_i.index_add_(0, index[edge == 1], (Pmc_j*self.edge_count)[edge == 1])
+
+        self.edge_mlp += mlp_mass
+        self.edge_count[edge == 1] = 0
+
+        return TensorToPtEtaPhiE(Pmc_i), MassFromPxPyPzE(Pmc_i)
+

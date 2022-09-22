@@ -35,7 +35,7 @@ def BasicBaseLineTruthChildren(Files, Names, CreateCache):
     DL = CreateWorkspace(Files, Features, CreateCache, 100, Names, "TruthTopChildren", True)
     samples = DL.TrainingSample
  
-    Model = BasicBaseLine()
+    Model = BasicBaseLineRecursion()
     Op = OptimizerTemplate(DL, Model)
     Op.LearningRate = 0.01
     Op.WeightDecay = 0.1
@@ -48,7 +48,7 @@ def BasicBaseLineTruthChildren(Files, Names, CreateCache):
     #kill |= {"from_res" : "C"}
     #kill |= {"signal_sample": "C"}
     #kill |= {"from_top": "C"}
-    KillCondition(kill, 1000, Op, samples, 100000, sleep = 2, batched = 10)
+    KillCondition(kill, 1000, Op, samples, 100000, sleep = 2, batched = 1)
 
 
 if __name__ == "__main__":
