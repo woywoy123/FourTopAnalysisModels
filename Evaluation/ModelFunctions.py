@@ -386,7 +386,7 @@ class Evaluation(Directories, WriteDirectory):
 
         self.WriteTextFile(Model, "/Summary", "RunSummary") 
 
-class ModelComparison(Reconstructor, Directories, WriteDirectory, Optimizer):
+class ModelComparison(Reconstructor, Directories, WriteDirectory):
 
     def __init__(self, Data):
         self.VerboseLevel = 0

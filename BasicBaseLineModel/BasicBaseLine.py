@@ -84,23 +84,25 @@ class BasicBaseLineRecursion(MessagePassing):
         self._it = 0
 
     def forward(self, i, edge_index, E_T_edge, N_pT, N_eta, N_phi, N_energy, N_mass):
-        if self._it == 0:
-            self.device = N_pT.device
-            self.edge_mlp = torch.zeros((edge_index.shape[1], 2), device = self.device)
-            self.edge_count = torch.ones((edge_index.shape[1], 1), device = self.device)
+        self.device = N_pT.device
+        self.edge_mlp = torch.zeros((edge_index.shape[1], 2), device = self.device)
+        self.edge_count = torch.ones((edge_index.shape[1], 1), device = self.device)
+        self.Counter = to_dense_adj(edge_index).zero_()[0]
 
         Pmu = torch.cat([N_pT, N_eta, N_phi, N_energy], dim = 1)
         Pmc = TensorToPxPyPzE(Pmu)
         
-        edge_index = self.propagate(edge_index, Pmc = Pmc, Pmu = Pmu, Mass = N_mass, T_edge = E_T_edge)
+        Pmc_i, Pmu_i, mass_i = self.propagate(edge_index, Pmc = Pmc, Pmu = Pmu, Mass = N_mass, T_edge = E_T_edge)
+        #self.propagate(edge_index, Pmc = Pmc_i, Pmu = Pmu_i, Mass = mass_i, T_edge = E_T_edge) 
 
         exit()
+        self.O_edge = self.edge_mlp
         return self.O_edge
 
     def message(self, edge_index, Pmc_i, Pmc_j, Pmu_i, Pmu_j, Mass_i, Mass_j, T_edge):
         e_dr = TensorDeltaR(Pmu_i, Pmu_j)
         e_mass = MassFromPxPyPzE(Pmc_i + Pmc_j) / 1000
-        mlp_mass = self._isMass(e_mass) #torch.cat([e_mass, torch.abs(Mass_i - Mass_j)], dim = 1)) 
+        mlp_mass = self._isMass(e_mass)  
         return edge_index[1], mlp_mass, e_mass, Pmc_j
 
     def aggregate(self, message, index, Pmc, Pmu, Mass):
@@ -114,5 +116,9 @@ class BasicBaseLineRecursion(MessagePassing):
         self.edge_mlp += mlp_mass
         self.edge_count[edge == 1] = 0
 
-        return TensorToPtEtaPhiE(Pmc_i), MassFromPxPyPzE(Pmc_i)
+        self.Counter[index, edge_index] += edge
+
+        print(self.Counter)
+        exit()
+        return Pmc_i, TensorToPtEtaPhiE(Pmc_i), MassFromPxPyPzE(Pmc_i)
 

@@ -7,17 +7,19 @@ from HelperFunctions import *
 from ModelFunctions import *
 
 
-SourceDir = "../BasicBaseLineModel/Dump/" # /CERN/AnalysisModelTraining/BasicBaseLineTruthJetSmall"
+SourceDir = "../BasicBaseLineModel/Dump/" 
 TargetDir = "./BasicBaseLineModel/"
+
+SourceDir =  "/CERN/AnalysisModelTraining/BasicBaseLine"
 
 D = Directories(SourceDir + "/Models")
 D.ListDirs()
 Dir = [i.split("/")[-1] for i in D.Files]
 out = GetSampleDetails(SourceDir)
 #BuildSymlinksToHDF5(SourceDir)
-#Data = RetrieveSamples(SourceDir)
+Data = RetrieveSamples(SourceDir)
 #PickleObject(Data, "HDF5")
-Data = UnpickleObject("HDF5")
+#Data = UnpickleObject("HDF5")
 
 mp = {}
 for i in out["DataContainer"]:
@@ -40,10 +42,10 @@ Val = out["ValidationSample"]
 Tr = [i for j in Tr for i in Tr[j]]
 Val = [i for j in Val for i in Val[j]]
 
-## Node Statistics - General Sample
+# Node Statistics - General Sample
 #NodeStatistics(TargetDir, DC, mp, Tr, Val)
 #
-## Process Statistics
+# Process Statistics
 #ProcessStatistics(TargetDir, DC, mp, Tr, Val, out)
 
 
@@ -62,11 +64,11 @@ for i in Dir:
     Ev = Evaluation(SourceDir + "/Models/", i)
     Ev.ReadStatistics()
     Ev.EpochLoop()
-    #Ev.MakePlots(TargetDir)
+    Ev.MakePlots(TargetDir)
     Ev.MakeLog(TargetDir)
     M.AddModel(Ev, Name)
 M.RebuildMassEdge("edge")
-M.RebuildMassNode("from_res")
+#M.RebuildMassNode("from_res")
 M.MakePlots()
 
 
