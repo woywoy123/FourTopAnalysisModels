@@ -32,13 +32,13 @@ def BaseLineModelTruthJet(Files, Names, CreateCache):
 
 def BasicBaseLineTruthChildren(Files, Names, CreateCache):
     Features = TruthTopChildren()
-    DL = CreateWorkspace(Files, Features, CreateCache, 100, Names, "TruthTopChildren", True)
-    samples = DL.TrainingSample
+    DL = CreateWorkspace(Files, Features, CreateCache, 1000, Names, "TruthTopChildren", True)
+    samples = DL.ValidationSample
  
     Model = BasicBaseLineRecursion()
     Op = OptimizerTemplate(DL, Model)
-    Op.LearningRate = 0.01
-    Op.WeightDecay = 0.1
+    Op.LearningRate = 0.001
+    Op.WeightDecay = 0.0001
     #Op.DefaultOptimizer = "SGD"
     Op.DefineOptimizer()
 
@@ -48,12 +48,12 @@ def BasicBaseLineTruthChildren(Files, Names, CreateCache):
     #kill |= {"from_res" : "C"}
     #kill |= {"signal_sample": "C"}
     #kill |= {"from_top": "C"}
-    KillCondition(kill, 1000, Op, samples, 100000, sleep = 2, batched = 1)
+    KillCondition(kill, 10, Op, samples, 100000, sleep = 2, batched = 4)
 
 
 if __name__ == "__main__":
     GeneralDir = "/CERN/CustomAnalysisTopOutputTest/"
-    Files = [GeneralDir + "tttt/QU_0.root", GeneralDir + "t/QU_0.root"]
+    Files = [GeneralDir + "ttbar/QU_0.root"]
     Names = ["tttt"]
     CreateCache = False
     #BaseLineModelTruthJet(Files, Names, CreateCache)
