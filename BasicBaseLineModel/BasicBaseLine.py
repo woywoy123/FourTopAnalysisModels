@@ -68,7 +68,7 @@ class BasicBaseLine(MessagePassing):
         return dense_to_sparse(self.Counter)[0]
 
 
-
+from time import sleep
 
 class BasicBaseLineRecursion(MessagePassing):
 
@@ -80,45 +80,57 @@ class BasicBaseLineRecursion(MessagePassing):
 
         end = 1024
         self._isMass = Seq(Linear(1, end), Sigmoid(), Linear(end, end), Sigmoid(), Linear(end, 2))
-        self._topo = Seq(Linear(6, end), Sigmoid(), Linear(end, end), Sigmoid(), Linear(end, 2))
         self._it = 0
 
-    def forward(self, i, edge_index, E_T_edge, N_pT, N_eta, N_phi, N_energy, N_mass):
+    def forward(self, i, edge_index, N_pT, N_eta, N_phi, N_energy, N_mass):
         self.device = N_pT.device
         self.edge_mlp = torch.zeros((edge_index.shape[1], 2), device = self.device)
-        self.edge_count = torch.ones((edge_index.shape[1], 1), device = self.device)
-        self.Counter = to_dense_adj(edge_index).zero_()[0]
-
+        self.node_count = torch.ones((N_pT.shape[0], 1), device = self.device)
+        self.edge_index = edge_index
+        
         Pmu = torch.cat([N_pT, N_eta, N_phi, N_energy], dim = 1)
         Pmc = TensorToPxPyPzE(Pmu)
         
-        Pmc_i, Pmu_i, mass_i = self.propagate(edge_index, Pmc = Pmc, Pmu = Pmu, Mass = N_mass, T_edge = E_T_edge)
-        #self.propagate(edge_index, Pmc = Pmc_i, Pmu = Pmu_i, Mass = mass_i, T_edge = E_T_edge) 
+        Pmc, Pmu, N_mass = self.propagate(edge_index, Pmc = Pmc, Pmu = Pmu, Mass = N_mass)
+        if self._it < 20:
+            self._it += 1 
+            return self.forward(i, edge_index, Pmu[:, 0:1], Pmu[:, 1:2], Pmu[:, 2:3], Pmu[:, 3:4], N_mass)
 
-        exit()
+        self._it = 0
+        print(self.node_count)
         self.O_edge = self.edge_mlp
         return self.O_edge
 
-    def message(self, edge_index, Pmc_i, Pmc_j, Pmu_i, Pmu_j, Mass_i, Mass_j, T_edge):
+    def message(self, edge_index, Pmc_i, Pmc_j, Pmu_i, Pmu_j, Mass_i, Mass_j):
         e_dr = TensorDeltaR(Pmu_i, Pmu_j)
         e_mass = MassFromPxPyPzE(Pmc_i + Pmc_j) / 1000
         mlp_mass = self._isMass(e_mass)  
+
         return edge_index[1], mlp_mass, e_mass, Pmc_j
 
     def aggregate(self, message, index, Pmc, Pmu, Mass):
         edge_index, mlp_mass, e_mass, Pmc_j = message
         edge = mlp_mass.max(dim = 1)[1]
+        
+        # Find the most edge predictions with the largest margin
+        mlp_mass = F.softmax(mlp_mass, dim = 1)
+        mlp_diff = torch.abs(mlp_mass[:,0:1] - mlp_mass[:,1:2])
+        max_c = mlp_diff.max(dim = 0)[1]
 
-        self.edge_count[index == edge_index] = 0
-        Pmc_i = Pmc_j[index == edge_index] # Self loops
-        Pmc_i.index_add_(0, index[edge == 1], (Pmc_j*self.edge_count)[edge == 1])
+        # Add the nodes with the largest margin together if they are connected.
+        # -> Get the nodes self four vector, this assures nodes dont just drop to zero 
+        # -> Add the most likely nodes together, if edge = 1 and the edge isnt a self loop
+        # -> Make sure these nodes are not reusable, node/edge -count
+        idx_i, idx_j = index[max_c], edge_index[max_c] # Get the index of the current node and the incoming node
+        Pmc_idx_i, Pmc_idx_j = Pmc[idx_i], Pmc[idx_j] # Get the four vectors of the most confident edge
 
-        self.edge_mlp += mlp_mass
-        self.edge_count[edge == 1] = 0
+        Pmc_i = Pmc_j[index == edge_index] # Collect the node's own four vector
+        Pmc_i.index_add_(0, idx_i, Pmc_idx_j*self.node_count[idx_j]*(idx_i != idx_j)*edge[max_c]) # Make sure the edge isn't self loop and hasn't been used previously
+        Pmc_i.index_add_(0, idx_j, Pmc_idx_i*self.node_count[idx_i]*(idx_i != idx_j)*edge[max_c]) # Make sure the edge isn't self loop and node pair hasn't been used previously
 
-        self.Counter[index, edge_index] += edge
-
-        print(self.Counter)
-        exit()
+        self.node_count[idx_i] = (idx_i == idx_j).to(dtype = torch.float) # Dont kill self loops
+        self.node_count[idx_j] = (idx_i == idx_j).to(dtype = torch.float) # Dont kill self loops
+       
+        self.edge_mlp[edge == 0] += mlp_mass[edge == 0]
         return Pmc_i, TensorToPtEtaPhiE(Pmc_i), MassFromPxPyPzE(Pmc_i)
 
