@@ -2,11 +2,11 @@ from AnalysisTopGNN.Generators import Analysis
 from AnalysisTopGNN.Submission import Condor
 from AnalysisTopGNN.Events import Event, EventGraphTruthJetLepton, EventGraphTruthTopChildren
 from EventFeatureTemplate import ApplyFeatures
-from BasicBaseLine import BasicBaseLine
+from V3.BasicBaseLine import BasicBaseLineRecursion
 
 Submission = Condor()
 Submission.ProjectName = "BasicBaseLineChildren"
-GeneralDir = "/CERN/CustomAnalysisTopOutputTest/"
+GeneralDir = "/CERN/CustomAnalysisTopOutput/"
 
 #GeneralDir = "/nfs/dust/atlas/user/<...>/SamplesGNN/SmallSample/"
 #GeneralDir = "/nfs/dust/atlas/user/<...>/SamplesGNN/CustomAnalysisTopOutput/"
@@ -42,33 +42,32 @@ def ModelConfig(Name):
     TM.Threads = 4
     TM.Device = "cuda"
     TM.Epochs = 100
-    TM.BatchSize = 10
-    TM.Model = BasicBaseLine()
+    TM.BatchSize = 20
+    TM.Model = BasicBaseLineRecursion()
     return TM
 
 
-Submission.DisableEventCache = False
-Submission.DisableDataCache = False
-
+Submission.SkipEventCache = False
+Submission.SkipDataCache = False
 
 # ====== Event Loader ======== #
-#EventLoaderConfig("ttbar", "ttbar")
-#EventLoaderConfig("SingleTop", "t")
+EventLoaderConfig("ttbar", "ttbar")
+EventLoaderConfig("SingleTop", "t")
 EventLoaderConfig("BSM4Top", "tttt")
 #EventLoaderConfig("Zmumu", "Zmumu")
 
 
 # ====== Data Loader ======== #
-#DataLoaderConfig("ttbar")
-#DataLoaderConfig("SingleTop")
+DataLoaderConfig("ttbar")
+DataLoaderConfig("SingleTop")
 DataLoaderConfig("BSM4Top")
 #DataLoaderConfig("Zmumu")
 
 # ====== Merge ======= #
-Smpl = ["Data_BSM4Top"] #["Data_ttbar", "Data_SingleTop", "Data_BSM4Top", "Data_ttbar", "Data_Zmumu"]
+Smpl = ["Data_BSM4Top", "Data_ttbar", "Data_SingleTop"] #, "Data_Zmumu"]
 Loader = Analysis()
-#Loader.InputSample("ttbar")
-#Loader.InputSample("SingleTop")
+Loader.InputSample("ttbar")
+Loader.InputSample("SingleTop")
 Loader.InputSample("BSM4Top")
 #Loader.InputSample("Zmumu")
 Loader.MergeSamples = True
@@ -125,8 +124,5 @@ TM7.DefaultOptimizer = "SGD"
 TM7.DefaultScheduler = None
 Submission.AddJob("BasicBaseLine_MRK7", TM7, "12GB", "48h", ["Sample"])
 
-Submission.LocalDryRun()
-#Submission.DisableRebuildTrainingSample = False
-#Submission.DisableDataCache = False 
-#Submission.DisableEventCache = False
-#Submission.DumpCondorJobs()
+#Submission.LocalDryRun()
+Submission.DumpCondorJobs()
