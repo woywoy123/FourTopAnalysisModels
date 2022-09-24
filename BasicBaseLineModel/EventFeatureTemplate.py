@@ -111,7 +111,7 @@ def TruthTopChildren():
 
 def ApplyFeatures(A, Level):
     if Level == "TruthChildren":
-        Features = TruthJets()
+        Features = TruthTopChildren()
 
     if Level == "TruthJets":
         Features = TruthJets()
