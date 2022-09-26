@@ -388,7 +388,7 @@ class Evaluation(Directories, WriteDirectory):
 
 class ModelComparison(Reconstructor, Directories, WriteDirectory):
 
-    def __init__(self, Data):
+    def __init__(self, Data = None):
         self.VerboseLevel = 0
         self.Verbose = True 
         self.Caller = "ModelComparison"
@@ -541,7 +541,7 @@ class ModelComparison(Reconstructor, Directories, WriteDirectory):
         self.MakeDir(self.OutputDirectory + "/ModelComparison")
         self.MakeDir(self.OutputDirectory + "/Epochs")
 
-        self.__ImportModelsTS()
+        #self.__ImportModelsTS()
         self.__CompilePlots("_TrainingAccuracy", "Accuracy", "Training", 0, 1.2)
         self.__CompilePlots("_ValidationAccuracy", "Accuracy", "Validation", 0, 1.2)
 

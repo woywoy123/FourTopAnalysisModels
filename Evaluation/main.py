@@ -7,29 +7,28 @@ from HelperFunctions import *
 from ModelFunctions import *
 
 
-SourceDir = "../BasicBaseLineModel/Dump/" 
+SourceDir = "./BasicBaseLineChildren/" 
 TargetDir = "./BasicBaseLineModel/"
 
-SourceDir =  "/CERN/AnalysisModelTraining/BasicBaseLine"
 
 D = Directories(SourceDir + "/Models")
 D.ListDirs()
 Dir = [i.split("/")[-1] for i in D.Files]
 out = GetSampleDetails(SourceDir)
 #BuildSymlinksToHDF5(SourceDir)
-Data = RetrieveSamples(SourceDir)
+#Data = RetrieveSamples(SourceDir)
 #PickleObject(Data, "HDF5")
 #Data = UnpickleObject("HDF5")
 
-mp = {}
-for i in out["DataContainer"]:
-    hash_ = out["DataContainer"][i]
-    if hash_ in Data:
-        out["DataContainer"][i] = Data[hash_]
-        mp[i] = hash_
-    else:
-        out["DataContainer"][i] = None
-
+#mp = {}
+#for i in out["DataContainer"]:
+#    hash_ = out["DataContainer"][i]
+#    if hash_ in Data:
+#        out["DataContainer"][i] = Data[hash_]
+#        mp[i] = hash_
+#    else:
+#        out["DataContainer"][i] = None
+#
 # Get a statistical breakdown of the data:
 # -> All; 
 #   n-Nodes, entries for process, Training/Validation of nodes
@@ -44,7 +43,7 @@ Val = [i for j in Val for i in Val[j]]
 
 # Node Statistics - General Sample
 #NodeStatistics(TargetDir, DC, mp, Tr, Val)
-#
+
 # Process Statistics
 #ProcessStatistics(TargetDir, DC, mp, Tr, Val, out)
 
@@ -56,7 +55,7 @@ Name = [
     {"name":"from_top", "node":"347"}
     ]
 
-M = ModelComparison(Data)
+M = ModelComparison() #Data)
 for i in Dir:
     if "_" not in i:
         continue
@@ -64,10 +63,10 @@ for i in Dir:
     Ev = Evaluation(SourceDir + "/Models/", i)
     Ev.ReadStatistics()
     Ev.EpochLoop()
-    Ev.MakePlots(TargetDir)
+    #Ev.MakePlots(TargetDir)
     Ev.MakeLog(TargetDir)
-    M.AddModel(Ev, Name)
-M.RebuildMassEdge("edge")
+    M.AddModel(Ev)
+#M.RebuildMassEdge("edge")
 #M.RebuildMassNode("from_res")
 M.MakePlots()
 
