@@ -1,5 +1,6 @@
 from AnalysisTopGNN.Generators import EventGenerator
-from AnalysisTopGNN.Plotting import TH1FStack
+from AnalysisTopGNN.Plotting.TemplateHistograms import TH1FStack
+from AnalysisTopGNN.Plotting.TemplateLines import TLineStack
 from AnalysisTopGNN.IO import WriteDirectory
 from collections import Counter
 
@@ -8,6 +9,8 @@ class GraphicsCompiler:
 
     def __init__(self):
         self.MakeSampleNodesPlot = True
+        self.MakeTrainingPlots = True
+        self.MakeStaticHistograms = True
         self.pwd = ""
     
     def SampleNodes(self, dict_stat):
@@ -66,6 +69,62 @@ class GraphicsCompiler:
         x = TH1FStack(**Plots)
         x.SaveFigure(self.pwd + "/NodeStatistics")
 
+    def TrainingPlots(self, model_dict, model):
+        if self.MakeTrainingPlots == False:
+            return 
+
+        Plots = {
+                    "Title" : "Epoch Time", 
+                    "Filename" : "EpochTime", 
+                    "yTitle" : "Time (s)", 
+                    "xTitle" : "Epoch", 
+                    "Style" : "ATLAS",
+                    "Lines" : ["EpochTime"],
+                    "yData" : ["EpochTime"],
+                    "xData" : ["Epochs"],
+                    "Data" : model_dict[model], 
+                } 
+       
+
+        x = TLineStack(**Plots) 
+        x.SaveFigure(self.pwd + "/TrainingStatistics")
+        
+        Plots["Title"] = "Average K-Fold Time"
+        Plots["Filename"] = "kFold_Time"
+        Plots["xTitle"] = "k-Fold"
+        Plots["Lines"] = ["k-Fold"]
+        Plots["yData"] = ["kFoldTime"]
+        Plots["xData"] = ["kFold"]
+        Plots["DoStatistics"] = True
+        Plots["MakeStaticHistograms"] = self.MakeStaticHistograms
+        x = TLineStack(**Plots)
+        x.SaveFigure(self.pwd + "/TrainingStatistics")
+            
+        for out in model_dict[model]["Outputs"]:
+            Plots["Title"] = "Accuracy of feature: " + out
+            Plots["Filename"] = "Accuracy_" + out
+            Plots["xTitle"] = "Epoch"
+            Plots["yTitle"] = "Accuracy of Prediction"
+            Plots["Lines"] = ["Training", "Validation"]
+            Plots["yData"] = ["TrainingAccuracy", "ValidationAccuracy"]
+            Plots["xData"] = ["TrainingEpochs", "ValidationEpochs"]
+            Plots["DoStatistics"] = True
+            Plots["Data"] = model_dict[model][out]
+            x = TLineStack(**Plots)
+            x.SaveFigure(self.pwd + "/TrainingStatistics")
+ 
+            Plots["Title"] = "Loss of feature: " + out
+            Plots["Filename"] = "Loss_" + out
+            Plots["xTitle"] = "Epoch"
+            Plots["yTitle"] = ""
+            Plots["Lines"] = ["Training", "Validation"]
+            Plots["yData"] = ["TrainingLoss", "ValidationLoss"]
+            Plots["xData"] = ["TrainingEpochs", "ValidationEpochs"]
+            Plots["DoStatistics"] = True
+            Plots["Data"] = model_dict[model][out]
+            x = TLineStack(**Plots)
+            x.SaveFigure(self.pwd + "/TrainingStatistics")
+ 
 
 class LogCompiler(WriteDirectory):
 
