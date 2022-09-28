@@ -10,7 +10,7 @@ class GraphicsCompiler:
     def __init__(self):
         self.MakeSampleNodesPlot = True
         self.MakeTrainingPlots = True
-        self.MakeStaticHistograms = True
+        self.MakeStaticHistograms = False
         self.pwd = ""
     
     def SampleNodes(self, dict_stat):
@@ -87,7 +87,7 @@ class GraphicsCompiler:
        
 
         x = TLineStack(**Plots) 
-        x.SaveFigure(self.pwd + "/TrainingStatistics")
+        x.SaveFigure(self.pwd)
         
         Plots["Title"] = "Average K-Fold Time"
         Plots["Filename"] = "kFold_Time"
@@ -98,7 +98,7 @@ class GraphicsCompiler:
         Plots["DoStatistics"] = True
         Plots["MakeStaticHistograms"] = self.MakeStaticHistograms
         x = TLineStack(**Plots)
-        x.SaveFigure(self.pwd + "/TrainingStatistics")
+        x.SaveFigure(self.pwd)
             
         for out in model_dict[model]["Outputs"]:
             Plots["Title"] = "Accuracy of feature: " + out
@@ -111,20 +111,46 @@ class GraphicsCompiler:
             Plots["DoStatistics"] = True
             Plots["Data"] = model_dict[model][out]
             x = TLineStack(**Plots)
-            x.SaveFigure(self.pwd + "/TrainingStatistics")
+            x.SaveFigure(self.pwd)
  
             Plots["Title"] = "Loss of feature: " + out
             Plots["Filename"] = "Loss_" + out
             Plots["xTitle"] = "Epoch"
-            Plots["yTitle"] = ""
+            Plots["yTitle"] = "Loss"
             Plots["Lines"] = ["Training", "Validation"]
             Plots["yData"] = ["TrainingLoss", "ValidationLoss"]
             Plots["xData"] = ["TrainingEpochs", "ValidationEpochs"]
             Plots["DoStatistics"] = True
             Plots["Data"] = model_dict[model][out]
             x = TLineStack(**Plots)
-            x.SaveFigure(self.pwd + "/TrainingStatistics")
+            x.SaveFigure(self.pwd)
+    
+    def TestPlots(self, stat_dict, model):
+        for out in stat_dict[model]["Outputs"]:
+            Plots = {} 
+            Plots["xTitle"] = "Epoch"
+            Plots["Lines"] = ["Test"]
+            Plots["xData"] = ["TestEpochs"]
+            Plots["DoStatistics"] = True
+            Plots["Data"] = stat_dict[model][out]
+            
+            Plots["Title"] = "Accuracy of feature: " + out + " on Test (Withheld Data)"
+            Plots["Filename"] = "Test_Accuracy_" + out
+            Plots["yTitle"] = "Accuracy of Prediction"
+            Plots["yData"] = ["TestAccuracy"]
+            x = TLineStack(**Plots)
+            x.SaveFigure(self.pwd)
  
+            Plots["Title"] = "Loss of feature: " + out + " on Test (Withheld Data)"
+            Plots["Filename"] = "Test_Loss_" + out
+            Plots["yTitle"] = "Loss"
+            Plots["yData"] = ["TestLoss"]
+            x = TLineStack(**Plots)
+            x.SaveFigure(self.pwd)
+
+
+
+
 
 class LogCompiler(WriteDirectory):
 
