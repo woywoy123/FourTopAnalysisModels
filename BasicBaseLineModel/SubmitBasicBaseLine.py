@@ -15,7 +15,7 @@ GeneralDir = "/CERN/CustomAnalysisTopOutputTest/"
 def EventLoaderConfig(Name, Dir):
     Ana = Analysis()
     Ana.Event = Event
-    Ana.Threads = 1
+    Ana.Threads = 10
     Ana.EventCache = True 
     Ana.Tree = "nominal"
     Ana.InputSample(Name, GeneralDir + Dir)
@@ -45,11 +45,12 @@ def ModelConfig(Name):
     TM.Device = "cuda"
     TM.Epochs = 100
     TM.BatchSize = 20
-    TM.chnk = 10000
+    TM.chnk = 100
     return TM
 
 def ModelConfigRecursion(Name):
     TM = ModelConfig(Name)
+    TM.VerboseLevel = 3
     TM.Model = BasicBaseLineRecursion()
     return TM
 
@@ -58,8 +59,8 @@ def ModelConfigNominal(Name):
     TM.Model = BasicBaseLine()
     return TM
 
-Submission.SkipEventCache = False
-Submission.SkipDataCache = False
+Submission.SkipEventCache = True
+Submission.SkipDataCache = True
 
 # ====== Event Loader ======== #
 EventLoaderConfig("ttbar", "ttbar")
@@ -68,30 +69,30 @@ EventLoaderConfig("BSM4Top", "tttt")
 #EventLoaderConfig("Zmumu", "Zmumu")
 
 
-## ====== Data Loader ======== #
-#DataLoaderConfig("ttbar")
-#DataLoaderConfig("SingleTop")
-#DataLoaderConfig("BSM4Top")
-##DataLoaderConfig("Zmumu")
+# ====== Data Loader ======== #
+DataLoaderConfig("ttbar")
+DataLoaderConfig("SingleTop")
+DataLoaderConfig("BSM4Top")
+#DataLoaderConfig("Zmumu")
+
+# ====== Merge ======= #
+Smpl = ["Data_BSM4Top", "Data_ttbar", "Data_SingleTop"] #, "Data_Zmumu"]
+Loader = Analysis()
+Loader.InputSample("ttbar")
+Loader.InputSample("SingleTop")
+Loader.InputSample("BSM4Top")
+#Loader.InputSample("Zmumu")
+Loader.MergeSamples = False
+Loader.GenerateTrainingSample = False
+Loader.ValidationSize = 90
+Submission.AddJob("Sample", Loader, "64GB", "96h", Smpl)
+
+# ======= Model to Train ======== #
+inpt = ["Sample"] # <-- Wait for to finish
+BaseName = "BasicBaseLineRecursion_MRK"
 #
-## ====== Merge ======= #
-#Smpl = ["Data_BSM4Top", "Data_ttbar", "Data_SingleTop"] #, "Data_Zmumu"]
-#Loader = Analysis()
-#Loader.InputSample("ttbar")
-#Loader.InputSample("SingleTop")
-#Loader.InputSample("BSM4Top")
-##Loader.InputSample("Zmumu")
-#Loader.MergeSamples = True
-#Loader.GenerateTrainingSample = True
-#Loader.ValidationSize = 90
-#Submission.AddJob("Sample", Loader, "64GB", "96h", Smpl)
-#
-## ======= Model to Train ======== #
-#inpt = ["Sample"] # <-- Wait for to finish
-#BaseName = "BasicBaseLineRecursion_MRK"
-#
-#i = 1
-#TM1 = ModelConfigRecursion(BaseName + str(i))
+i = 1
+TM1 = ModelConfigRecursion(BaseName + str(i))
 #i += 1
 #TM2 = ModelConfigRecursion(BaseName + str(i))
 #i += 1
@@ -105,7 +106,7 @@ EventLoaderConfig("BSM4Top", "tttt")
 #i += 1
 #TM7 = ModelConfigRecursion(BaseName + str(i))
 #
-#TM1.LearningRate = 0.01
+TM1.LearningRate = 0.01
 #TM2.LearningRate = 0.001
 #TM3.LearningRate = 0.001
 #TM4.LearningRate = 0.01
@@ -113,7 +114,7 @@ EventLoaderConfig("BSM4Top", "tttt")
 #TM6.LearningRate = 0.001
 #TM7.LearningRate = 0.001
 #
-#TM1.WeightDecay = 0.01
+TM1.WeightDecay = 0.01
 #TM2.WeightDecay = 0.01
 #TM3.WeightDecay = 0.001
 #TM4.WeightDecay = 0.001
@@ -122,8 +123,8 @@ EventLoaderConfig("BSM4Top", "tttt")
 #TM7.WeightDecay = 0.001
 #
 #
-#TM1.SchedulerParams = {"gamma" : 0.5}
-#TM1.DefaultScheduler = "ExponentialR"
+TM1.SchedulerParams = {"gamma" : 0.5}
+TM1.DefaultScheduler = "ExponentialR"
 #
 #TM2.SchedulerParams = {"gamma" : 1.0}
 #TM2.DefaultScheduler = "ExponentialR"
@@ -142,8 +143,8 @@ EventLoaderConfig("BSM4Top", "tttt")
 #TM7.DefaultScheduler = None
 #TM7.DefaultOptimizer = "SGD"
 #
-#i = 1
-#Submission.AddJob(BaseName + str(i), TM1, "12GB", "48h", inpt)
+i = 1
+Submission.AddJob(BaseName + str(i), TM1, "12GB", "48h", inpt)
 #i += 1
 #Submission.AddJob(BaseName + str(i), TM2, "12GB", "48h", inpt)
 #i += 1
@@ -229,4 +230,4 @@ EventLoaderConfig("BSM4Top", "tttt")
 #Submission.AddJob(BaseName + str(i), TM7, "12GB", "48h", inpt)
 
 Submission.LocalDryRun()
-Submission.DumpCondorJobs()
+#Submission.DumpCondorJobs()

@@ -1,19 +1,18 @@
 from AnalysisTopGNN.IO import UnpickleObject, Directories, WriteDirectory, PickleObject
-from AnalysisTopGNN.Generators import EventGenerator, TorchScriptModel, Optimizer
+from AnalysisTopGNN.Generators import EventGenerator, TorchScriptModel, Optimizer, GenerateDataLoader
+from AnalysisTopGNN.Reconstruction import Reconstructor
 import os, random
 import torch
-
+from sklearn.metrics import roc_curve, auc
 from Compilers import *
-
+import numpy as np
 
 class MetricsCompiler(EventGenerator, Optimizer):
     def __init__(self):
         super(MetricsCompiler, self).__init__()
         self.FileEventIndex = {}
         self.Device = None
-        self.chnk = 10
         self.Threads = 1
-        self.DataCacheDir = None
         self.CompareToTruth = False
         self.Predictions = {}
         self.Truths = {}
@@ -21,6 +20,10 @@ class MetricsCompiler(EventGenerator, Optimizer):
         self.model_dict = {}
         self.model_test = {}
         self.ROC_dict = {}
+        self.Mass_dict = {}
+        self.Mass_dict["Edge"] = {}
+        self.Mass_dict["Node"] = {}
+
 
     def SampleNodes(self, Training, FileTrace):
         self.FileEventIndex |= {"/".join(FileTrace["Samples"][i].split("/")[-2:]) : [FileTrace["Start"][i], FileTrace["End"][i]] for i in range(len(FileTrace["Start"]))}
@@ -107,14 +110,9 @@ class MetricsCompiler(EventGenerator, Optimizer):
                 self.model_dict[model]["Epochs"] += [ep]
         return self.model_dict
 
-    def ModelPrediction(self, TorchSave, DataInput, TorchScript):
-        Data = self.RecallFromCache(DataInput, self.DataCacheDir) 
-        self.Training = True
-
-        self.DefaultOptimizer = "ADAM"
-        self.LearningRate = 0.001
-        self.WeightDecay = 0.001
+    def ModelPrediction(self, TorchSave, Data, TorchScript):
         
+        self.Training = False
         self.Debug = "Test"
         for model in TorchSave:
             epochs = list(TorchSave[model])
@@ -128,7 +126,6 @@ class MetricsCompiler(EventGenerator, Optimizer):
             self.Predictions[model] = {}
             self.Predictions[model] |= {ep : {} for ep in epochs}
             
-            self.DefineOptimizer()
             self.T_Features = {}
             self.GetTruthFlags([], "E")
             self.GetTruthFlags([], "N")
@@ -154,8 +151,8 @@ class MetricsCompiler(EventGenerator, Optimizer):
                         self.Model.to(self.Device)
                         truth, pred = self.Train(d) 
                     it = d.i.item()
-                
-                    output[it] = {v : pred[v][0] for v in pred}
+                    
+                    output[it] = pred
                     if self.CompareToTruth and it not in self.Truths:
                         self.Truths[it] = {v : truth[v][0] for v in truth}
                     self.Predictions[model][epoch] |= output 
@@ -184,27 +181,60 @@ class MetricsCompiler(EventGenerator, Optimizer):
                 if epoch not in self.ROC_dict[f]:
                     self.ROC_dict[f][epoch] = {}
                 if model not in self.ROC_dict[f][epoch]:
-                    self.ROC_dict[f][epoch][model] = {"TP" : [], "TN" : [], "FP" : [], "FN" : []}
-                    
+                    self.ROC_dict[f][epoch][model] = { "fpr" : [], "tpr" : [] }
+                
+                tru, pred_score = [], []
                 for ev in pred[model][epoch]:
                     t = truth[ev][f]
                     p = pred[model][epoch][ev][f]
-                    
-                    p_1, t_1 = p == 1, t == 1
-                    p_0, t_0 = p == 0, t == 0
-                    
-                    pt_11 = torch.sum(p_1 == t_1)
-                    pt_01 = torch.sum(p_0 == t_1)
-                    pt_00 = torch.sum(p_0 == t_0)
-                    
-                    tpr = pt_11 / (pt_11 + pt_01)
-                    fnr = 1-tpr
-                # Can be easily solved via CUDA 
-                # Same with the invariant mass 
+                   
+                    p_p = torch.max(torch.softmax(p[1], dim = 1), dim = 1)[0].detach().cpu().numpy()
+                    t = t.detach().cpu().numpy()
+                    tru.append(t)
+                    pred_score.append(p_p)
 
+                tru = np.concatenate(tru)
+                pred_score = np.concatenate(pred_score)
+                
+                fpr, tpr, _ = roc_curve(tru, pred_score)
+                auc_ = auc(fpr, tpr) 
 
+                self.ROC_dict[f][epoch][model]["fpr"] += fpr.tolist()
+                self.ROC_dict[f][epoch][model]["tpr"] += tpr.tolist()
+                self.ROC_dict[f][epoch][model]["auc"] = auc_
 
-class ModelEvaluator(EventGenerator, Directories, WriteDirectory):
+    def MassReconstruction(self, TorchSave, Data, Features, EdgeMode = False):
+        def IterateOverData(Data, Mode, var_names, Model = None):
+            r = Reconstructor(Model = Model)
+            out = {}
+            for ev in Data:
+                val = r(ev).MassFromEdgeFeature(feat, **var_names) if Mode else r(ev).MassFromNodeFeature(feat, **var_names)
+                out[ev.i.int()] = val.tolist()
+            return out
+
+        for feat in Features:
+            var_names = Features[feat]
+            dic = self.Mass_dict["Node"] if EdgeMode else self.Mass_dict["Edge"]
+
+            if feat not in dic:
+                dic[feat] = {}
+            if self.CompareToTruth and "Truth" not in dic[feat]:
+                dic[feat]["Truth"] = IterateOverData(Data, EdgeMode, var_names) 
+
+            for model in TorchSave:
+                Epochs = list(TorchSave[model])
+                Epochs.sort()
+                for epoch in Epochs:
+                    if epoch not in dic[feat]:
+                        dic[feat][epoch] = {}
+                    if model not in dic[feat][epoch]:
+                        dic[feat][epoch][model] = []
+                        
+                    self.Notify("Using Model: '" + model + "' @ Epoch: " + str(epoch) + " and Feature: " +  feat)
+                    dic[feat][epoch][model] = IterateOverData(Data, EdgeMode, var_names, torch.load(TorchSave[model][epoch]))
+                    
+
+class ModelEvaluator(Directories, WriteDirectory, GenerateDataLoader):
     
     def __init__(self):
         super(ModelEvaluator, self).__init__()
@@ -212,6 +242,8 @@ class ModelEvaluator(EventGenerator, Directories, WriteDirectory):
         self.Caller = "ModelEvaluator"
         self.Device = "cpu"
         self.DataCacheDir = "HDF5"
+        self.Threads = 10
+        self.chnk = 100
 
         # ==== Compiler Classes
         self._MetricsCompiler = MetricsCompiler()
@@ -236,6 +268,7 @@ class ModelEvaluator(EventGenerator, Directories, WriteDirectory):
         # ==== Model Compiler
         self.MakeStaticHistogramPlot = True
         self.MakeTrainingPlots = True
+        self.MakeTestPlots = True
         self.CompareToTruth = False
         self._CompileModelOutput = False
         self._CompileModels = False
@@ -244,6 +277,10 @@ class ModelEvaluator(EventGenerator, Directories, WriteDirectory):
         self._TrainingStatistics = {}
         self._TorchScripts = {}
         self._TorchSave = {}
+
+        # ===== Mass Reconstructor ===== #
+        self._MassEdgeFeature = {}
+        self._MassNodeFeature = {}
 
     def AddFileTraces(self, Directory):
         if Directory.endswith("FileTraces.pkl"):
@@ -296,6 +333,12 @@ class ModelEvaluator(EventGenerator, Directories, WriteDirectory):
     def ROCCurveFeature(self, feature):
         self._ROCCurveFeatures[feature] = None
 
+    def MassFromEdgeFeature(self, feature, pt_name = "N_pT", eta_name = "N_eta", phi_name = "N_phi", e_name = "N_energy"):
+        self._MassEdgeFeature[feature] = {"pt" : pt_name, "eta" : eta_name, "phi" : phi_name, "e" : e_name}
+
+    def MassFromNodeFeature(self, feature, pt_name = "N_pT", eta_name = "N_eta", phi_name = "N_phi", e_name = "N_energy"):
+        self._MassNodeFeature[feature] = {"pt" : pt_name, "eta" : eta_name, "phi" : phi_name, "e" : e_name}
+
     def __BuildSymlinks(self):
         tmp = self.VerboseLevel 
         self.VerboseLevel = 0
@@ -339,6 +382,9 @@ class ModelEvaluator(EventGenerator, Directories, WriteDirectory):
             self._LogCompiler.SampleNodes(dict_stat)
 
             self.__BuildSymlinks()
+        if len(self._SamplesHDF5) == 0:
+            self.Fail("No Samples Found.")
+        Data = self.RecallFromCache(self._SamplesHDF5, self.DataCacheDir) 
 
         if self._CompileModels:
             EpochContainer = {}
@@ -353,31 +399,34 @@ class ModelEvaluator(EventGenerator, Directories, WriteDirectory):
                 self._GraphicsCompiler.pwd = OutDir + "/" + model
                 self._GraphicsCompiler.TrainingPlots(model_dict, model)
         
-        if self._CompileModelOutput or len(self._TorchSave) > 0:
-            if len(self._SamplesHDF5) == 0:
-                self.Fail("No Samples Found.")
-            #self._MetricsCompiler.Device = self.Device
-            #self._MetricsCompiler.DataCacheDir = self.DataCacheDir
-            #self._MetricsCompiler.CompareToTruth = self.CompareToTruth
-            #self._MetricsCompiler.ModelPrediction(self._TorchSave, self._SamplesHDF5, self._TorchScripts) 
-            #
-            #pred = self._MetricsCompiler.Predictions
-            #truth = self._MetricsCompiler.Truths
-            #stat = self._MetricsCompiler.Statistics
-            #
-            #PickleObject([stat, pred, truth], "TMP")
-            tmp = UnpickleObject("TMP")
-            stat = tmp[0]
+        if self._CompileModelOutput or len(self._TorchSave) > 0 and self.MakeTestPlots:
+            self._MetricsCompiler.Device = self.Device
+            self._MetricsCompiler.CompareToTruth = self.CompareToTruth
+
+            self._MetricsCompiler.ModelPrediction(self._TorchSave, Data, self._TorchScripts) 
+            stat = self._MetricsCompiler.Statistics
             
-            #stat_dict = self._MetricsCompiler.ModelTestCompiler(stat)
-            #for model in stat_dict:
-            #    self._GraphicsCompiler.pwd = OutDir + "/" + model 
-            #    self._GraphicsCompiler.TestPlots(stat_dict, model)
-            
-            truth, pred = tmp[2], tmp[1]
-            
+            stat_dict = self._MetricsCompiler.ModelTestCompiler(stat)
+            for model in stat_dict:
+                self._GraphicsCompiler.pwd = OutDir + "/" + model 
+                self._GraphicsCompiler.TestPlots(stat_dict, model)
+        
+        if len(self._ROCCurveFeatures) > 0 or len(self._TorchSave) > 0 and self.CompareToTruth:
+
+            truth = self._MetricsCompiler.Truths
+            pred = self._MetricsCompiler.Predictions
             for model in pred:
                 features = [f for f in self._ROCCurveFeatures if f in stat[model]["Outputs"]]
                 if len(features) == 0:
                     continue
                 self._MetricsCompiler.ROCCurveCompiler(pred, truth, model, features)
+            ROC_val = self._MetricsCompiler.ROC_dict
+            self._GraphicsCompiler.ROCCurve(ROC_val)
+
+        if len(self._MassEdgeFeature) > 0 or len(self._TorchSave) > 0:
+            
+            self._MetricsCompiler.CompareToTruth = self.CompareToTruth
+            self._MetricsCompiler.MassReconstruction(self._TorchSave, Data, self._MassEdgeFeature, True)
+            mass_dict = self._MetricsCompiler.Mass_dict
+            self._GraphicsCompiler.pwd = OutDir + "/" + 
+            self._GraphicsCompiler.ParticleReconstruction(mass_dict)

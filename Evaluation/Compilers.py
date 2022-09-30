@@ -4,7 +4,6 @@ from AnalysisTopGNN.Plotting.TemplateLines import TLineStack
 from AnalysisTopGNN.IO import WriteDirectory
 from collections import Counter
 
-
 class GraphicsCompiler:
 
     def __init__(self):
@@ -148,6 +147,30 @@ class GraphicsCompiler:
             x = TLineStack(**Plots)
             x.SaveFigure(self.pwd)
 
+    def ROCCurve(self, ROC_val):
+        for feature in ROC_val:
+            for epoch in ROC_val[feature]:
+                models = list(ROC_val[feature][epoch])
+                Plots = {}
+                Plots["xTitle"] = "False Positive Rate"
+                Plots["yTitle"] = "True Positive Rate"
+                Plots["Title"] = "Receiver Operating Characteristic (ROC) Curve at Epoch: " + str(epoch) + " for feature: " + feature
+                Plots["Lines"] = [m + " - AUC " + str(round(ROC_val[feature][epoch][m]["auc"], 3)) for m in models]
+                Plots["xData"] = [i + "/fpr" for i in models]
+                Plots["yData"] = [i + "/tpr" for i in models]
+                Plots["Filename"] = "ROC_" + str(epoch)
+                Plots["Data"] = ROC_val[feature][epoch]
+                Plots["ROC"] = True
+                x = TLineStack(**Plots)
+                x.xMin = 0
+                x.yMin = 0
+                x.xMax = 1
+                x.yMax = 1
+                x.SaveFigure(self.pwd + "/" + feature)
+    
+    def ParticleReconstruction(self, mass_dict):
+        for feat in mass_dict:
+            pass            
 
 
 
