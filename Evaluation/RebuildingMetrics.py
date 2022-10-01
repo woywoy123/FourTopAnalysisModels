@@ -21,8 +21,6 @@ class MetricsCompiler(EventGenerator, Optimizer):
         self.model_test = {}
         self.ROC_dict = {}
         self.Mass_dict = {}
-        self.Mass_dict["Edge"] = {}
-        self.Mass_dict["Node"] = {}
 
 
     def SampleNodes(self, Training, FileTrace):
@@ -315,7 +313,7 @@ class MetricsCompiler(EventGenerator, Optimizer):
 
 
 
-class ModelEvaluator(Directories, WriteDirectory, GenerateDataLoader):
+class ModelEvaluator(EventGenerator, Directories, WriteDirectory, GenerateDataLoader):
     
     def __init__(self):
         super(ModelEvaluator, self).__init__()
@@ -423,19 +421,23 @@ class ModelEvaluator(Directories, WriteDirectory, GenerateDataLoader):
     def __BuildSymlinks(self):
         tmp = self.VerboseLevel 
         self.VerboseLevel = 0
-        lst = [i + ".hdf5" for i in self._DataLoaderMap.values()]
+        lst = list(self._DataLoaderMap)
         self.VerboseLevel = tmp
 
         if self.RebuildSize:
             random.shuffle(lst) 
         
+        pkl = self.ListFilesInDir(self._rootDir + "/DataCache", [".pkl"])
+        pkl = {str(val) : di.split("/")[-1].replace(".pkl", "") for di in pkl for val in list(UnpickleObject(di).values())}
+        
         self.MakeDir(self._rootDir + "/HDF5")
         leng = int(len(lst)*(self.RebuildSize/100))
         for i in range(leng):
-            name = lst[i].split("/")[-1]
+            name = self._DataLoaderMap[lst[i]].split("/")[-1]
             try:
-                self._SamplesHDF5.append(name.split(".")[0])
-                os.symlink(os.path.abspath(lst[i]), os.path.abspath(self._rootDir + "/HDF5/" + name))
+                self._SamplesHDF5.append(name)
+                src = self._rootDir + "/DataCache/" + pkl[name] + "/" + self.EventIndexFileLookup(lst[i]).split("/")[-1] + "/" + name + ".hdf5"
+                os.symlink(src, os.path.abspath(self._rootDir + "/HDF5/" + name + ".hdf5"))
             except FileExistsError:
                 continue
             self.Notify("!!!Creating Symlink: " + name)
@@ -450,6 +452,7 @@ class ModelEvaluator(Directories, WriteDirectory, GenerateDataLoader):
             keys = ["Tree", "Start", "End", "Level", "SelfLoop", "Samples"]
             self._SampleDetails |= { key : FileTrace[key] for key in keys}
             self._DataLoaderMap |= FileTrace["SampleMap"]
+            self.FileEventIndex = {"/".join(FileTrace["Samples"][i].split("/")[-2:]).replace(".root", "") : [FileTrace["Start"][i], FileTrace["End"][i]] for i in range(len(FileTrace["Start"]))}
 
             TrainSample = UnpickleObject(self._rootDir + "/FileTraces/TrainingSample.pkl")
             self._TrainingSample |= {node : [self._DataLoaderMap[evnt] for evnt in  TrainSample["Training"][node]] for node in  TrainSample["Training"] }
@@ -465,7 +468,7 @@ class ModelEvaluator(Directories, WriteDirectory, GenerateDataLoader):
             self.__BuildSymlinks()
         if len(self._SamplesHDF5) == 0:
             self.Fail("No Samples Found.")
-        Data = self.RecallFromCache(self._SamplesHDF5, self.DataCacheDir) 
+        Data = self.RecallFromCache(self._SamplesHDF5, self._rootDir + "/" + self.DataCacheDir) 
 
         if self._CompileModels:
             EpochContainer = {}
@@ -506,11 +509,9 @@ class ModelEvaluator(Directories, WriteDirectory, GenerateDataLoader):
 
         if len(self._MassEdgeFeature) > 0 or len(self._TorchSave) > 0:
             
-            #self._MetricsCompiler.CompareToTruth = self.CompareToTruth
-            #self._MetricsCompiler.MassReconstruction(self._TorchSave, Data, self._MassEdgeFeature, True)
-            #mass_dict = self._MetricsCompiler.Mass_dict
+            self._MetricsCompiler.CompareToTruth = self.CompareToTruth
+            self._MetricsCompiler.MassReconstruction(self._TorchSave, Data, self._MassEdgeFeature, True)
+            mass_dict = self._MetricsCompiler.Mass_dict
 
-            #PickleObject(mass_dict, "TMP")
-            mass_dict = UnpickleObject("TMP")
             self._GraphicsCompiler.pwd = OutDir + "/" 
             self._GraphicsCompiler.ParticleReconstruction(mass_dict)

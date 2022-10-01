@@ -168,23 +168,25 @@ class GraphicsCompiler:
                 x.SaveFigure(self.pwd + "/ROC_" + feature)
     
     def ParticleReconstruction(self, mass_dict):
-        import copy
+
         for feat in mass_dict:
             if feat == "Process":
                 continue
             
-            for epoch in [ep for ep in mass_dict[feat] if ep != "Truth"]:
+            PerfProcess = {}
+            Epochs =  [ep for ep in mass_dict[feat] if ep != "Truth"]
+            Epochs.sort()
+
+            for epoch in Epochs:
                 for model in mass_dict[feat][epoch]:
-
                     dic = mass_dict[feat][epoch][model]
-
-
+                    
                     Plot = {"xTitle" : "Invariant Mass (GeV)", "yTitle" : "Entries", "xBins" : 500, "xMin" : 0, "xMax" : 250}
                     Plot["Title"] = "Reconstructed Invariant Top Mass from Feature: " + feat + " at Epoch " + str(epoch)
                     Plot["Histograms"] = [ {"Title" : model, "xData" : dic["Tops"]} ]
                     Plot["OutputDirectory"] = self.pwd + "/TopMass/" + feat + "/" + model + "/"
                     Plot["Filename"] = "EPOCH_" + str(epoch)
-
+                    
                     if "Truth" in mass_dict[feat]:
                         Plot["Histogram"] =  {"Title" : "Truth", "xData" : mass_dict[feat]["Truth"]["Tops"]} 
                     x = TH1FStack(**Plot)
@@ -219,11 +221,47 @@ class GraphicsCompiler:
                     Plot["yMin"] = 0
                     x = TLine(**Plot)
                     x.SaveFigure()
-
-
                     
-
-
+                    if model not in PerfProcess:
+                        PerfProcess[model] = {}
+                        PerfProcess[model]["Epoch"] = []
+                        PerfProcess[model]["All_Epochs"] = []
+                        PerfProcess[model]["Event_Eff"] = []
+                    for pr in proc:
+                        if pr not in PerfProcess[model]:
+                            PerfProcess[model][pr] = []
+                        PerfProcess[model][pr] += [proc[pr]]
+                    PerfProcess[model]["Epoch"] += [epoch]
+                    PerfProcess[model]["All_Epochs"] += [epoch]*len(dic["EventEfficiency"])
+                    PerfProcess[model]["Event_Eff"] += dic["EventEfficiency"]
+             
+            for model in PerfProcess:
+                Plot = {} 
+                Plot["Title"] = "Top Reconstruction Efficiency by Process for " + model + " and feature: " + feat
+                Plot["xTitle"] = "Epoch"
+                Plot["yTitle"] = "Efficiency (%)"
+                Plot["OutputDirectory"] = self.pwd + "/Process/" + feat + "/"
+                Plot["Filename"] = model
+                Plot["Lines"] = [i for i in PerfProcess[model] if i != "Epoch"]
+                Plot["xData"] = ["Epoch"]*(len(list(PerfProcess[model]))-1)
+                Plot["yData"] = [i for i in PerfProcess[model] if i != "Epoch"]
+                Plot["yMax"] = 101
+                Plot["yMin"] = -1
+                Plot["Data"] = PerfProcess[model]
+                x = TLineStack(**Plot)
+                x.SaveFigure()
+            
+            Plot["Title"] = "Overall Top Reconstruction Efficiency of Models for Feature: " + feat
+            Plot["OutputDirectory"] = self.pwd + "/ModelComparison/" 
+            Plot["Filename"] = feat
+            Plot["Lines"] = list(PerfProcess)
+            Plot["xData"] = [m + "/All_Epochs" for m in PerfProcess]
+            Plot["yData"] = [m + "/Event_Eff" for m in PerfProcess]
+            Plot["Data"] = PerfProcess
+            Plot["DoStatistics"] = True
+            Plot["MakeStaticHistograms"] = False
+            y = TLineStack(**Plot)
+            y.SaveFigure()
 
 
 
