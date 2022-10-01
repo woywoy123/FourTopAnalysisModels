@@ -1,6 +1,6 @@
 from AnalysisTopGNN.Generators import EventGenerator
 from AnalysisTopGNN.Plotting.TemplateHistograms import TH1FStack
-from AnalysisTopGNN.Plotting.TemplateLines import TLineStack
+from AnalysisTopGNN.Plotting.TemplateLines import TLineStack, TLine
 from AnalysisTopGNN.IO import WriteDirectory
 from collections import Counter
 
@@ -95,32 +95,30 @@ class GraphicsCompiler:
         Plots["yData"] = ["kFoldTime"]
         Plots["xData"] = ["kFold"]
         Plots["DoStatistics"] = True
+        Plots["OutputDirectory"] = self.pwd
         Plots["MakeStaticHistograms"] = self.MakeStaticHistograms
         x = TLineStack(**Plots)
         x.SaveFigure(self.pwd)
             
         for out in model_dict[model]["Outputs"]:
-            Plots["Title"] = "Accuracy of feature: " + out
-            Plots["Filename"] = "Accuracy_" + out
             Plots["xTitle"] = "Epoch"
-            Plots["yTitle"] = "Accuracy of Prediction"
-            Plots["Lines"] = ["Training", "Validation"]
-            Plots["yData"] = ["TrainingAccuracy", "ValidationAccuracy"]
-            Plots["xData"] = ["TrainingEpochs", "ValidationEpochs"]
             Plots["DoStatistics"] = True
             Plots["Data"] = model_dict[model][out]
+            Plots["Lines"] = ["Training", "Validation"]
+            
+            Plots["Title"] = "Accuracy of feature: " + out
+            Plots["Filename"] = "Accuracy_" + out
+            Plots["yTitle"] = "Accuracy of Prediction"
+            Plots["yData"] = ["TrainingAccuracy", "ValidationAccuracy"]
+            Plots["xData"] = ["TrainingEpochs", "ValidationEpochs"]
             x = TLineStack(**Plots)
             x.SaveFigure(self.pwd)
  
             Plots["Title"] = "Loss of feature: " + out
             Plots["Filename"] = "Loss_" + out
-            Plots["xTitle"] = "Epoch"
             Plots["yTitle"] = "Loss"
-            Plots["Lines"] = ["Training", "Validation"]
             Plots["yData"] = ["TrainingLoss", "ValidationLoss"]
             Plots["xData"] = ["TrainingEpochs", "ValidationEpochs"]
-            Plots["DoStatistics"] = True
-            Plots["Data"] = model_dict[model][out]
             x = TLineStack(**Plots)
             x.SaveFigure(self.pwd)
     
@@ -132,20 +130,21 @@ class GraphicsCompiler:
             Plots["xData"] = ["TestEpochs"]
             Plots["DoStatistics"] = True
             Plots["Data"] = stat_dict[model][out]
-            
+            Plots["OutputDirectory"] = self.pwd
+
             Plots["Title"] = "Accuracy of feature: " + out + " on Test (Withheld Data)"
             Plots["Filename"] = "Test_Accuracy_" + out
             Plots["yTitle"] = "Accuracy of Prediction"
             Plots["yData"] = ["TestAccuracy"]
             x = TLineStack(**Plots)
-            x.SaveFigure(self.pwd)
+            x.SaveFigure()
  
             Plots["Title"] = "Loss of feature: " + out + " on Test (Withheld Data)"
             Plots["Filename"] = "Test_Loss_" + out
             Plots["yTitle"] = "Loss"
             Plots["yData"] = ["TestLoss"]
             x = TLineStack(**Plots)
-            x.SaveFigure(self.pwd)
+            x.SaveFigure()
 
     def ROCCurve(self, ROC_val):
         for feature in ROC_val:
@@ -166,11 +165,65 @@ class GraphicsCompiler:
                 x.yMin = 0
                 x.xMax = 1
                 x.yMax = 1
-                x.SaveFigure(self.pwd + "/" + feature)
+                x.SaveFigure(self.pwd + "/ROC_" + feature)
     
     def ParticleReconstruction(self, mass_dict):
+        import copy
         for feat in mass_dict:
-            pass            
+            if feat == "Process":
+                continue
+            
+            for epoch in [ep for ep in mass_dict[feat] if ep != "Truth"]:
+                for model in mass_dict[feat][epoch]:
+
+                    dic = mass_dict[feat][epoch][model]
+
+
+                    Plot = {"xTitle" : "Invariant Mass (GeV)", "yTitle" : "Entries", "xBins" : 500, "xMin" : 0, "xMax" : 250}
+                    Plot["Title"] = "Reconstructed Invariant Top Mass from Feature: " + feat + " at Epoch " + str(epoch)
+                    Plot["Histograms"] = [ {"Title" : model, "xData" : dic["Tops"]} ]
+                    Plot["OutputDirectory"] = self.pwd + "/TopMass/" + feat + "/" + model + "/"
+                    Plot["Filename"] = "EPOCH_" + str(epoch)
+
+                    if "Truth" in mass_dict[feat]:
+                        Plot["Histogram"] =  {"Title" : "Truth", "xData" : mass_dict[feat]["Truth"]["Tops"]} 
+                    x = TH1FStack(**Plot)
+                    x.SaveFigure()
+                    
+                    if "Truth" not in mass_dict[feat]:
+                        continue
+                    Plot = {} 
+                    Plot["Title"] = "Event Reconstruction Efficiency: " + feat + " at Epoch " + str(epoch)
+                    Plot["xTitle"] = "Efficiency (%)"
+                    Plot["yTitle"] = "Entries"
+                    Plot["OutputDirectory"] = self.pwd + "/EventEfficiency/" + feat + "/" + model + "/"
+                    Plot["Filename"] = "EPOCH_" + str(epoch)
+                    Plot["Histograms"] = [ {"Title" : model, "xData" : dic["EventEfficiency"]}]
+                    Plot["xMin"] = 0
+                    Plot["xMax"] = 150
+                    Plot["xBins"] = 150
+                    x = TH1FStack(**Plot)
+                    x.SaveFigure()
+
+                    proc = { i : float(k/j)*100 for i, k, j in zip(dic["ProcessPredTops"], dic["ProcessPredTops"].values(), dic["ProcessTruthTops"].values()) }
+                    Plot = {} 
+                    Plot["Title"] = "Top Reconstruction Efficiency by Process: " + feat + " at Epoch " + str(epoch)
+                    Plot["xTitle"] = "Process"
+                    Plot["yTitle"] = "Efficiency (%)"
+                    Plot["OutputDirectory"] = self.pwd + "/ProcessEfficiency/" + feat + "/" + model + "/"
+                    Plot["Filename"] = "EPOCH_" + str(epoch)
+                    Plot["yData"] = list(proc.values())
+                    Plot["xData"] = [i for i in range(len(proc))]
+                    Plot["xTickLabels"] = list(proc)
+                    Plot["yMax"] = 110
+                    Plot["yMin"] = 0
+                    x = TLine(**Plot)
+                    x.SaveFigure()
+
+
+                    
+
+
 
 
 

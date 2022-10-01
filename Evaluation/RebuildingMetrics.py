@@ -204,22 +204,95 @@ class MetricsCompiler(EventGenerator, Optimizer):
                 self.ROC_dict[f][epoch][model]["auc"] = auc_
 
     def MassReconstruction(self, TorchSave, Data, Features, EdgeMode = False):
-        def IterateOverData(Data, Mode, var_names, Model = None):
+        def IterateOverData(Data, feat, Mode, var_names, Model = None):
             r = Reconstructor(Model = Model)
             out = {}
             for ev in Data:
                 val = r(ev).MassFromEdgeFeature(feat, **var_names) if Mode else r(ev).MassFromNodeFeature(feat, **var_names)
-                out[ev.i.int()] = val.tolist()
+                out[ev.i.item()] = val.tolist()
+            return out
+        
+        def GetParticles(pred):
+            out = {}
+            out["Tops"] = [k for p in pred.values() for k in p]
+            return out
+        
+        def GetProcessParticles(sample_dic, pred):
+            out = {}
+            out["nProcessTops"] = { p : [] for p in set(sample_dic.values()) }
+            for p in pred:
+                out["nProcessTops"][sample_dic[p]] += pred[p]
+            return out
+        
+        def Efficiency(truth_proc, pred_proc, sample_dic):
+            def ClosestTop(tru, pred):
+
+                res = []
+                if len(tru) == 0:
+                    return res
+                p = pred.pop(0)
+                max_tru, min_tru = max(tru), min(tru)
+                col = True if p <= max_tru and p >= min_tru else False
+
+                if col == False:
+                    if len(pred) == 0:
+                        return res
+                    return ClosestTop(tru, pred)
+
+                diff = [ abs(p - t) for t in tru ]
+                tru.pop(diff.index(min(diff)))
+                res += ClosestTop(tru, pred)
+                res.append(p)
+                return res 
+
+            out = {}
+            out["ProcessTruthTops"] = {}
+            out["ProcessPredTops"] = {}
+            out["EventEfficiency"] = []
+            out["nTrueTops"] = 0
+            out["nPredTops"] = 0
+
+            for i in pred_proc:
+                pred_tops = pred_proc[i]
+                tru_tops = truth_proc[i]
+                proc = sample_dic[i]
+                
+                if proc not in out["ProcessTruthTops"]:
+                    out["ProcessTruthTops"][proc] = 0
+                    out["ProcessPredTops"][proc] = 0
+
+                p_, t_ = [], []
+                p_ += pred_tops
+                t_ += tru_tops
+
+                ntops = ClosestTop(t_, p_)
+                l_pred = len(ntops)
+                l_tru = len(tru_tops)
+                
+                out["ProcessPredTops"][proc] += l_pred
+                out["ProcessTruthTops"][proc] += l_tru
+                out["nTrueTops"] += l_tru
+                out["nPredTops"] += l_pred
+                out["EventEfficiency"] += [float(l_pred / l_tru) * 100]
             return out
 
+
+
+        dic = self.Mass_dict
         for feat in Features:
             var_names = Features[feat]
-            dic = self.Mass_dict["Node"] if EdgeMode else self.Mass_dict["Edge"]
+
+            if "Process" not in dic and self.CompareToTruth:
+                dic["Process"] = {}
+                for ev in Data:
+                    dic["Process"][ev.i.item()] = self.EventIndexFileLookup(ev.i.item()).split("/")[0]
 
             if feat not in dic:
                 dic[feat] = {}
             if self.CompareToTruth and "Truth" not in dic[feat]:
-                dic[feat]["Truth"] = IterateOverData(Data, EdgeMode, var_names) 
+                truth = IterateOverData(Data, feat, EdgeMode, var_names)
+                dic[feat]["Truth"] = {}
+                dic[feat]["Truth"] |= GetParticles(truth)
 
             for model in TorchSave:
                 Epochs = list(TorchSave[model])
@@ -228,11 +301,19 @@ class MetricsCompiler(EventGenerator, Optimizer):
                     if epoch not in dic[feat]:
                         dic[feat][epoch] = {}
                     if model not in dic[feat][epoch]:
-                        dic[feat][epoch][model] = []
+                        dic[feat][epoch][model] = {}
                         
                     self.Notify("Using Model: '" + model + "' @ Epoch: " + str(epoch) + " and Feature: " +  feat)
-                    dic[feat][epoch][model] = IterateOverData(Data, EdgeMode, var_names, torch.load(TorchSave[model][epoch]))
+                    Pred = IterateOverData(Data, feat, EdgeMode, var_names, torch.load(TorchSave[model][epoch]))
+                    dic[feat][epoch][model] |= GetParticles(Pred)
+
+                    if self.CompareToTruth == False:
+                        continue
+                    dic[feat][epoch][model] |= Efficiency(truth, Pred, dic["Process"])
                     
+
+
+
 
 class ModelEvaluator(Directories, WriteDirectory, GenerateDataLoader):
     
@@ -425,8 +506,11 @@ class ModelEvaluator(Directories, WriteDirectory, GenerateDataLoader):
 
         if len(self._MassEdgeFeature) > 0 or len(self._TorchSave) > 0:
             
-            self._MetricsCompiler.CompareToTruth = self.CompareToTruth
-            self._MetricsCompiler.MassReconstruction(self._TorchSave, Data, self._MassEdgeFeature, True)
-            mass_dict = self._MetricsCompiler.Mass_dict
-            self._GraphicsCompiler.pwd = OutDir + "/" + 
+            #self._MetricsCompiler.CompareToTruth = self.CompareToTruth
+            #self._MetricsCompiler.MassReconstruction(self._TorchSave, Data, self._MassEdgeFeature, True)
+            #mass_dict = self._MetricsCompiler.Mass_dict
+
+            #PickleObject(mass_dict, "TMP")
+            mass_dict = UnpickleObject("TMP")
+            self._GraphicsCompiler.pwd = OutDir + "/" 
             self._GraphicsCompiler.ParticleReconstruction(mass_dict)
