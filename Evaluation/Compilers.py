@@ -264,8 +264,6 @@ class GraphicsCompiler:
             y.SaveFigure()
 
 
-
-
 class LogCompiler(WriteDirectory):
 
     def __init__(self):

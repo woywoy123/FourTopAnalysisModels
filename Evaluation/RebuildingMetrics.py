@@ -1,5 +1,6 @@
 from AnalysisTopGNN.IO import UnpickleObject, Directories, WriteDirectory, PickleObject
 from AnalysisTopGNN.Generators import EventGenerator, TorchScriptModel, Optimizer, GenerateDataLoader
+from AnalysisTopGNN.Tools import Threading
 from AnalysisTopGNN.Reconstruction import Reconstructor
 import os, random
 import torch
@@ -21,7 +22,6 @@ class MetricsCompiler(EventGenerator, Optimizer):
         self.model_test = {}
         self.ROC_dict = {}
         self.Mass_dict = {}
-
 
     def SampleNodes(self, Training, FileTrace):
         self.FileEventIndex |= {"/".join(FileTrace["Samples"][i].split("/")[-2:]) : [FileTrace["Start"][i], FileTrace["End"][i]] for i in range(len(FileTrace["Start"]))}
@@ -113,13 +113,19 @@ class MetricsCompiler(EventGenerator, Optimizer):
         self.Training = False
         self.Debug = "Test"
         for model in TorchSave:
+            if model == "Models":
+                continue
+            BaseModel = torch.load(TorchSave["Models"][model])
             epochs = list(TorchSave[model])
             epochs.sort()
             _zero = epochs.pop(0)
 
             self._init = False
             self.Sample = Data[0]
-            self.Model = torch.load(TorchSave[model][_zero])
+
+            self.Model = BaseModel
+            self.Model.load_state_dict(torch.load(TorchSave[model][_zero])["state_dict"])
+            
             self.InitializeModel()
             self.Predictions[model] = {}
             self.Predictions[model] |= {ep : {} for ep in epochs}
@@ -131,10 +137,13 @@ class MetricsCompiler(EventGenerator, Optimizer):
             self.Statistics[model] = {}
             self.Statistics[model]["Outputs"] = [k[2:] for k in self.ModelOutputs if k.startswith("O_")]
             for epoch in epochs:
+
                 if model in TorchScript:
                     self.Model = TorchScriptModel(TorchScript[model][1][epoch], maps = TorchScript[model][0])
                     self.Model.to(self.Device)
- 
+                else:
+                    self.Model.load_state_dict(torch.load(TorchSave[model][_zero])["state_dict"])
+
                 self.Stats = {}
                 self.MakeContainer("Test")
 
@@ -145,17 +154,21 @@ class MetricsCompiler(EventGenerator, Optimizer):
                         truth, pred = self.Train(d)
                     except:
                         self.Warning("Imported TorchScript Failed. Revert to Pickled Model.")
-                        self.Model = torch.load(TorchSave[model][epoch])
+                        self.Model.load_state_dict(torch.load(TorchSave[model][epoch])["state_dict"])
                         self.Model.to(self.Device)
                         truth, pred = self.Train(d) 
                     it = d.i.item()
-                    
                     output[it] = pred
+                    
                     if self.CompareToTruth and it not in self.Truths:
                         self.Truths[it] = {v : truth[v][0] for v in truth}
-                    self.Predictions[model][epoch] |= output 
+                    #self.Predictions[model][epoch] |= output 
                 self.Statistics[model][epoch] = self.Stats
-    
+                print(self.Truths)
+                print(self.Predictions[model][epoch])
+
+
+
     def ModelTestCompiler(self, Statistics):
         for model in Statistics:
             self.model_test[model] = {}
@@ -355,7 +368,7 @@ class ModelEvaluator(EventGenerator, Directories, WriteDirectory, GenerateDataLo
         self._ROCCurveFeatures = {}
         self._TrainingStatistics = {}
         self._TorchScripts = {}
-        self._TorchSave = {}
+        self._TorchSave = {"Models" : {}}
 
         # ===== Mass Reconstructor ===== #
         self._MassEdgeFeature = {}
@@ -381,12 +394,13 @@ class ModelEvaluator(EventGenerator, Directories, WriteDirectory, GenerateDataLo
             self.Warning("Model: " + Name + " not found. Skipping")
             return 
         self._TrainingStatistics[Name] = x
-        self._TorchSave[Name] = self.ListFilesInDir(Directory + "/TorchSave/", [".pt"])
-        self._TorchSave[Name] = {int(k.split("/")[-1].split("_")[1].split(".")[0]) : k for k in self._TorchSave[Name]}
+        files = self.ListFilesInDir(Directory + "/TorchSave/", [".pt"])
+        self._TorchSave["Models"][Name] = [i for i in files if "_Model" in i][0]
+        self._TorchSave[Name] = {int(k.split("/")[-1].split("_")[1].split(".")[0]) : k for k in files if "_Model" not in k}
         
         self.VerboseLevel = tmp
         self.Notify("Added Model: " + Directory.split("/")[-1])
-        self._CompileModels = True
+        self._CompileModelOutput = True
 
     def AddTorchScriptModel(self, Name, OutputMap = None, Directory = None):
         if Directory is None:
@@ -427,8 +441,8 @@ class ModelEvaluator(EventGenerator, Directories, WriteDirectory, GenerateDataLo
         if self.RebuildSize:
             random.shuffle(lst) 
         
-        pkl = self.ListFilesInDir(self._rootDir + "/DataCache", [".pkl"])
-        pkl = {str(val) : di.split("/")[-1].replace(".pkl", "") for di in pkl for val in list(UnpickleObject(di).values())}
+        pkl = list(self.ListDirs(self._rootDir + "/DataCache"))
+        pkl = {str(val) : di.split("/")[-1] for di in pkl for val in list(UnpickleObject(di + "/" + di.split("/")[-1] + ".pkl").values())}
         
         self.MakeDir(self._rootDir + "/HDF5")
         leng = int(len(lst)*(self.RebuildSize/100))
@@ -439,7 +453,7 @@ class ModelEvaluator(EventGenerator, Directories, WriteDirectory, GenerateDataLo
                 src = self._rootDir + "/DataCache/" + pkl[name] + "/" + self.EventIndexFileLookup(lst[i]).split("/")[-1] + "/" + name + ".hdf5"
                 os.symlink(src, os.path.abspath(self._rootDir + "/HDF5/" + name + ".hdf5"))
             except FileExistsError:
-                continue
+                pass
             self.Notify("!!!Creating Symlink: " + name)
             if (i+1) % 10000 == 0 or self.VerboseLevel == 3: 
                 self.Notify("!!" + str(round(float(i/leng)*100, 3)) + "% Complete")
@@ -457,36 +471,35 @@ class ModelEvaluator(EventGenerator, Directories, WriteDirectory, GenerateDataLo
             TrainSample = UnpickleObject(self._rootDir + "/FileTraces/TrainingSample.pkl")
             self._TrainingSample |= {node : [self._DataLoaderMap[evnt] for evnt in  TrainSample["Training"][node]] for node in  TrainSample["Training"] }
             self._TestSample |= {node : [self._DataLoaderMap[evnt] for evnt in  TrainSample["Validation"][node]] for node in TrainSample["Validation"] }
-            dict_stat = self._MetricsCompiler.SampleNodes(TrainSample, FileTrace)
+            #dict_stat = self._MetricsCompiler.SampleNodes(TrainSample, FileTrace)
 
             self._GraphicsCompiler.pwd = OutDir
             self._GraphicsCompiler.MakeSampleNodesPlot = self.MakeSampleNodesPlots
-            self._GraphicsCompiler.SampleNodes(dict_stat)
+            #self._GraphicsCompiler.SampleNodes(dict_stat)
             self._LogCompiler.pwd = OutDir
-            self._LogCompiler.SampleNodes(dict_stat)
+            #self._LogCompiler.SampleNodes(dict_stat)
 
             self.__BuildSymlinks()
         if len(self._SamplesHDF5) == 0:
             self.Fail("No Samples Found.")
         Data = self.RecallFromCache(self._SamplesHDF5, self._rootDir + "/" + self.DataCacheDir) 
-
         if self._CompileModels:
             EpochContainer = {}
             for model in self._TrainingStatistics:
                 EpochContainer[model] = {k.split("/")[-1].split("_")[1].split(".")[0] : UnpickleObject(k) for k in self._TrainingStatistics[model]}
 
-            model_dict = self._MetricsCompiler.ModelTrainingCompiler(EpochContainer)
+            #model_dict = self._MetricsCompiler.ModelTrainingCompiler(EpochContainer)
             self._GraphicsCompiler.MakeStaticHistograms = self.MakeStaticHistogramPlot
             self._GraphicsCompiler.MakeTrainingPlots = self.MakeTrainingPlots
             
-            for model in model_dict:
-                self._GraphicsCompiler.pwd = OutDir + "/" + model
-                self._GraphicsCompiler.TrainingPlots(model_dict, model)
+            #for model in model_dict:
+            #    self._GraphicsCompiler.pwd = OutDir + "/" + model
+            #    self._GraphicsCompiler.TrainingPlots(model_dict, model)
         
-        if self._CompileModelOutput or len(self._TorchSave) > 0 and self.MakeTestPlots:
+        if self._CompileModelOutput and self.MakeTestPlots:
             self._MetricsCompiler.Device = self.Device
             self._MetricsCompiler.CompareToTruth = self.CompareToTruth
-
+            
             self._MetricsCompiler.ModelPrediction(self._TorchSave, Data, self._TorchScripts) 
             stat = self._MetricsCompiler.Statistics
             

@@ -15,7 +15,9 @@ GeneralDir = "/CERN/CustomAnalysisTopOutputTest/"
 def EventLoaderConfig(Name, Dir):
     Ana = Analysis()
     Ana.Event = Event
-    Ana.Threads = 10
+    Ana.Threads = 12
+    #Ana.NEvents = 10
+    Ana.chnk = 1000
     Ana.EventCache = True 
     Ana.Tree = "nominal"
     Ana.InputSample(Name, GeneralDir + Dir)
@@ -29,7 +31,7 @@ def DataLoaderConfig(Name):
     Ana.SelfLoop = True
     Ana.DumpHDF5 = True
     Ana.Threads = 12
-    #Ana.NEvents = 100
+    #Ana.NEvents = 10
     Ana.InputSample(Name)
     ApplyFeatures(Ana, "TruthChildren")
     Ana.DataCacheOnlyCompile = [Name]
@@ -43,9 +45,9 @@ def ModelConfig(Name):
     TM.kFold = 10
     TM.Threads = 12
     TM.Device = "cuda"
-    TM.Epochs = 100
+    TM.Epochs = 1
     TM.BatchSize = 20
-    TM.chnk = 100
+    TM.chnk = 1000
     return TM
 
 def ModelConfigRecursion(Name):
@@ -85,6 +87,7 @@ Loader.InputSample("BSM4Top")
 Loader.MergeSamples = False
 Loader.GenerateTrainingSample = False
 Loader.ValidationSize = 90
+Loader.chnk = 100
 Submission.AddJob("Sample", Loader, "64GB", "96h", Smpl)
 
 # ======= Model to Train ======== #
@@ -160,10 +163,10 @@ Submission.AddJob(BaseName + str(i), TM1, "12GB", "48h", inpt)
 #
 #
 #
-#BaseName = "BasicBaseLineNominal_MRK"
+BaseName = "BasicBaseLineNominal_MRK"
 #
-#i = 1
-#TM1 = ModelConfigNominal(BaseName + str(i))
+i = 1
+TM1 = ModelConfigNominal(BaseName + str(i))
 #i += 1
 #TM2 = ModelConfigNominal(BaseName + str(i))
 #i += 1
@@ -214,8 +217,8 @@ Submission.AddJob(BaseName + str(i), TM1, "12GB", "48h", inpt)
 #TM7.DefaultScheduler = None
 #TM7.DefaultOptimizer = "SGD"
 #
-#i = 1
-#Submission.AddJob(BaseName + str(i), TM1, "12GB", "48h", inpt)
+i = 1
+Submission.AddJob(BaseName + str(i), TM1, "12GB", "48h", inpt)
 #i += 1
 #Submission.AddJob(BaseName + str(i), TM2, "12GB", "48h", inpt)
 #i += 1
