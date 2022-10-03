@@ -52,12 +52,14 @@ from Metrics import ModelEvaluator
 
 x = ModelEvaluator()
 x.BuildDataPercentage = 1
-x.MakeTrainingPlots = False
+x.BuildDataRandom = True
+x.MakeTrainingPlots = True
 x.AddFileTraces(Dir + "BasicBaseLineChildren")
-x.AddModel(Dir + "BasicBaseLineChildren/Models/BasicBaseLineRecursion_MRK1")
+#x.AddModel(Dir + "BasicBaseLineChildren/Models/BasicBaseLineRecursion_MRK1")
 x.AddModel(Dir + "BasicBaseLineChildren/Models/BasicBaseLineNominal_MRK1")
-x.DefineTorchScriptModel("BasicBaseLineRecursion_MRK1", OutputMap)
-x.ROCCurveFeature("edge")
-x.MassFromEdgeFeature("edge")
-x.MassFromNodeFeature("...")
+#x.DefineTorchScriptModel("BasicBaseLineRecursion_MRK1", OutputMap)
+x.ROCEdgeFeature("edge")
+x.MassEdgeFeature("edge")
+x.MassNodeFeature("...")
+x.MassNodeFeature("from_res")
 x.Compile("./ModelEvaluator")

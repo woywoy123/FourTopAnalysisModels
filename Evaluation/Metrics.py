@@ -1,5 +1,8 @@
-from Epoch import *
 from AnalysisTopGNN.Tools import Notification
+from Tooling import Tools 
+from Samples import SampleContainer
+from Models import ModelContainer
+
 
 class ModelEvaluator(Tools, Notification):
     
@@ -27,24 +30,38 @@ class ModelEvaluator(Tools, Notification):
         self._Models[ModelName].Dir = Directory
         self._Models[ModelName].Device = self.Device
         self._Models[ModelName].VerboseLevel = self.VerboseLevel
-        
+    
+    def __AddFeatureToModel(self, obj, name, dic, feat):
+        inter = getattr(obj, name)
+        if feat not in inter:
+            inter[feat] = {"ROC" : False, "Mass" : False}
+        inter[feat] |= dic 
+
     def DefineTorchScriptModel(self, Name, OutputNodeMap):
         self._Models[Name].TorchScriptMap = OutputNodeMap
 
-    def MassFromEdgeFeature(self, Feature, pt_name = "N_pT", eta_name = "N_eta", phi_name = "N_phi", e_name = "N_energy"):
+    def MassEdgeFeature(self, Feature, pt_name = "N_pT", eta_name = "N_eta", phi_name = "N_phi", e_name = "N_energy"):
         for i in self._Models:
-            self._Models[i].EdgeFeatures[Feature] = {"pt" : pt_name, "eta" : eta_name, "phi" : phi_name, "e" : e_name, "ROC" : False}
+            dic = {"varnames" : {"pt" : pt_name, "eta" : eta_name, "phi" : phi_name, "e" : e_name}, "Mass" : True}
+            self.__AddFeatureToModel(self._Models[i], "EdgeFeatures", dic, Feature)
 
-    def MassFromNodeFeature(self, Feature, pt_name = "N_pT", eta_name = "N_eta", phi_name = "N_phi", e_name = "N_energy"):
+    def MassNodeFeature(self, Feature, pt_name = "N_pT", eta_name = "N_eta", phi_name = "N_phi", e_name = "N_energy"):
         for i in self._Models:
-            self._Models[i].EdgeFeatures[Feature] = {"pt" : pt_name, "eta" : eta_name, "phi" : phi_name, "e" : e_name, "ROC" : False}    
+            dic = {"varnames" : {"pt" : pt_name, "eta" : eta_name, "phi" : phi_name, "e" : e_name}, "Mass" : True}
+            self.__AddFeatureToModel(self._Models[i], "NodeFeatures", dic, Feature)
 
-    def ROCCurveFeature(self, Feature):
+    def ROCEdgeFeature(self, Feature):
         for i in self._Models:
-            if Feature in self._Models[i].EdgeFeatures:
-                self._Models[i].EdgeFeatures[Feature]["ROC"] = True
-            if Feature in self._Models[i].NodeFeatures:
-                self._Models[i].NodeFeatures[Feature]["ROC"] = True
+            self.__AddFeatureToModel(self._Models[i], "EdgeFeatures", {"ROC" : True}, Feature)
+
+    def ROCNodeFeature(self, Feature):
+        for i in self._Models:
+            self.__AddFeatureToModel(self._Models[i], "NodeFeatures", {"ROC" : True}, Feature)
+
+    def ROCGraphFeature(self, Feature):
+        for i in self._Models:
+            self.__AddFeatureToModel(self._Models[i], "GraphFeatures", {"ROC" : True}, Feature)
+
 
     def Compile(self, OutputDirectory):
         self.mkdir(OutputDirectory + "/HDF5")
@@ -69,5 +86,9 @@ class ModelEvaluator(Tools, Notification):
             self._Models[i].AnalyzeDataCompatibility()
 
             if self.MakeTrainingPlots:
-                self._Models[i].CompileTrainingStatistics()
-            self._Models[i].CompileTestData()
+                self._Models[i].CompileTrainingStatistics(OutputDirectory)
+            self._Models[i].CompileResults("test", OutputDirectory)
+            self._Models[i].CompileResults("train", OutputDirectory)
+            self._Models[i].CompileResults("all", OutputDirectory)
+            
+            self._Models[i].DumpModel(OutputDirectory)

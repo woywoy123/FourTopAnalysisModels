@@ -1,138 +1,9 @@
-from AnalysisTopGNN.Tools import Threading, Notification
-from AnalysisTopGNN.IO import UnpickleObject
-from AnalysisTopGNN.Generators import EventGenerator, GenerateDataLoader, Optimizer, ModelImporter
-from glob import glob
-import os
-import random
+from AnalysisTopGNN.IO import UnpickleObject, PickleObject
+from AnalysisTopGNN.Generators import Optimizer
+from Tooling import Tools, Metrics
 import torch
 
-class Tools:
-    def UnNestList(self, inpt):
-        if isinstance(inpt, list) == False:
-            return [inpt]
-        out = []
-        for i in inpt:
-            out += self.UnNestList(i)
-        return out
-
-    def UnNestDict(self, inpt):
-        if isinstance(inpt, dict) == False:
-            return inpt        
-        out = []
-        for i in inpt:
-            out += self.UnNestDict(inpt[i])
-        return out 
-
-    def pwd(self):
-        return os.getcwd()
-
-    def abs(self, directory):
-        return os.path.abspath(directory)
-
-    def mkdir(self, directory):
-        try:
-            os.makedirs(directory)
-        except FileExistsError:
-            pass
-
-    def ListFilesInDir(self, directory):
-        return [i.split("/")[-1] for i in glob(directory + "/*")]
-
-    def TraverseDictionary(self, inpt, path):
-        if isinstance(inpt, dict) == False:
-            return inpt
-        split = path.split("/")
-        if len(split) == 1:
-            return inpt[split[0]]
-        return self.TraverseDictionary(inpt[split[0]], "/".join(split[1:]))
-
-
-class Sample(GenerateDataLoader):
-
-    def __init__(self):
-        self.src = None
-        self.dst = None
-        self.prc = None
-        self.hash = None
-        self.index = None
-        self.train = None
-        self.Data = None
-    
-    def Compile(self):
-        try:
-            os.symlink(self.src + "/" + self.hash + ".hdf5", self.dst + "/" + self.hash + ".hdf5") 
-        except FileExistsError:
-            pass
-        self.Data = self.RecallFromCache(self.hash, self.dst)
-        del self.src
-        del self.dst
-
-class SampleContainer(Tools, EventGenerator):
-
-    def __init__(self):
-        self.DataCache = None
-        self.FileTrace = None
-        self.TrainingSample = None
-        self.HDF5 = None
-        self.Threading = 12
-        self.chnk = 1000
-        self.random = False
-        self.Size = 10
-        self.Device = "cuda"
-
-    def Collect(self):
-        self.FileTrace = UnpickleObject(self.FileTrace)
-        self.TrainingSample = UnpickleObject(self.TrainingSample)
-        self.SampleMap = self.FileTrace["SampleMap"]
-
-        self.FileEventIndex = ["/".join(smpl.split("/")[-2:]).replace(".root", "") for smpl in self.FileTrace["Samples"]]
-        self.FileEventIndex = {self.FileEventIndex[i] : [self.FileTrace["Start"][i], self.FileTrace["End"][i]] for i in range(len(self.FileEventIndex))}
-        self.ReverseHash = {str(j) : i for i in self.ListFilesInDir(self.DataCache) for j in UnpickleObject(self.DataCache + "/" + i + "/" + i + ".pkl").values()}
-
-        smpl = list(self.SampleMap) 
-        if self.random: 
-            random.shuffle(smpl)
-        self.SampleMap = {smpl[s] : self.SampleMap[smpl[s]] for s in range(int(len(smpl)*float(self.Size/100)))}
-
-    def MakeSamples(self):
-        mode = {i : True for i in self.UnNestDict(self.TrainingSample["Training"])}
-        mode |= {i : False for i in self.UnNestDict(self.TrainingSample["Validation"])}
-        
-        for indx in self.SampleMap:
-            smpl = Sample()
-            smpl.index = indx
-            smpl.hash = self.SampleMap[indx]
-
-            file = self.EventIndexFileLookup(indx)
-            sub = file.split("/")
-            smpl.prc = sub.pop(0)
-            
-            smpl.train = mode[indx]
-
-            dch = self.ReverseHash[smpl.hash]
-            smpl.src = self.DataCache + "/" + dch + "/" + "/".join(sub)
-            smpl.dst = self.HDF5
-            smpl.train = False
-            
-            self.SampleMap[indx] = smpl
-
-        del self.ReverseHash
-        del self.DataCache
-        del self.FileEventIndex
-    
-    def Compile(self):
-        def Function(inpt):
-            for i in inpt:
-                i.Compile()
-            return inpt
-        TH = Threading(list(self.SampleMap.values()), Function, self.Threading, self.chnk)
-        TH.Start()
-        for i in TH._lists:
-            self.SampleMap[i.index] = i
-            self.SampleMap[i.index].Data.to(self.Device)
-
-
-class Epoch(Tools, Optimizer):
+class Epoch(Tools, Optimizer, Metrics):
 
     def __init__(self):
         self.Epoch = None
@@ -145,9 +16,21 @@ class Epoch(Tools, Optimizer):
         self.ModelInputs = None
         self.ModelOutputs = None
         self.ModelTruth = None
-        self.Mode = "Test"
         self.Training = False
         self.Device = None
+        
+        self.Debug = False
+        self.Stats = {}
+        self.ROC = {}
+        
+        self.NodeFeatureMass = {}
+        self.EdgeFeatureMass = {}
+
+        self.TruthNodeFeatureMass = {}
+        self.TruthEdgeFeatureMass = {}
+
+        self.NodeParticleEfficiency = {}
+        self.EdgeParticleEfficiency = {}
 
     def CollectMetric(self, name, key, feature, inpt):
         if hasattr(self, name) == False:
@@ -182,92 +65,112 @@ class Epoch(Tools, Optimizer):
                     self.CollectMetric("Node"+metric.replace("_", ""), self.TrainStats[metric], nodes, inpt)
         del self.TrainStats
     
-    def PredictInput(self, Data):
-        self.Debug = self.Mode
-        self.Stats = {}
-        self.MakeContainer(self.Mode)
+    def PredictOutput(self, Data, idx):
+        truth, pred = self.Train(Data[idx].Data)
+        for feat in list(pred):
+            if feat not in self.ROC:
+                self.ROC[feat] = { "fpr" : [], "tpr" : [], "auc" : [], 
+                                   "truth" : [], "pred" : [], "pred_score" : [], 
+                                   "idx" : [], "proc" : []
+                                 }
+
+            self.ROC[feat]["truth"].append(truth[feat][0])
+            self.ROC[feat]["pred"].append(pred[feat][0])
+            self.ROC[feat]["pred_score"].append(pred[feat][1]) 
+            self.ROC[feat]["idx"].append(idx)
+            self.ROC[feat]["proc"].append(Data[idx].prc)
+        return pred
+
+    def Flush(self):
         self.Model.load_state_dict(torch.load(self.TorchSave)["state_dict"])
-        self.Device = list(Data.values())[0].Data.device
-        for i in Data:
-            self.Train(Data[i].Data)
+        self.Stats = {}
+        self.ROC = {}
+        self.NodeFeatureMass = {}
+        self.EdgeFeatureMass = {}
+        self.TruthNodeFeatureMass = {}
+        self.TruthEdgeFeatureMass = {}
+        self.NodeParticleEfficiency = {}
+        self.EdgeParticleEfficiency = {}
+        if self.Debug:
+            self.MakeContainer(self.Debug)
 
+    def ParticleYield(self, Edge):
+        dic_p = self.EdgeFeatureMass if Edge else self.NodeFeatureMass
+        dic_t = self.TruthEdgeFeatureMass if Edge else self.TruthNodeFeatureMass
+        dic_o = self.EdgeParticleEfficiency if Edge else self.NodeParticleEfficiency
 
+        for pack in [[feat, event, prc] for feat in dic_p for event, prc in zip(dic_p[feat], self.ROC[feat]["proc"])]:
+            f, idx, prc = pack[0], pack[1], pack[2]
+            if f not in dic_o:
+                dic_o[f] = {}
+            dic_o[f][idx] = self.ParticleEfficiency(dic_p[f][idx], dic_t[f][idx], prc)
 
-class ModelContainer(Tools, ModelImporter, Notification):
-
-    def __init__(self, Name = None):
-        self.Epochs = {}
-        self.TorchScriptMap = None
-        self.ModelSaves = {
-            "TorchSave" : {}, 
-            "TorchScript" : {}, 
-            "Base" : None, 
-            "Training" : {}
-        }
-        
-        self.EdgeFeatures = {}
-        self.NodeFeatures = {}
-        self.GrapFeatures = {}
-        self.T_Features = {}
-        
-        self.ModelOutputs = {}
-        self.ModelInputs = {} 
-
-        self.Name = Name
-        self.Data = {}
-        self.Dir = None
-        self.VerboseLevel = 0
-        self.Caller = "ModelContainer"
-
-    def Collect(self):
-        Files = self.ListFilesInDir(self.Dir + "/TorchSave")
-        
-        self.ModelSaves["Base"] = Files.pop(Files.index([i for i in Files if "_Model.pt" in i][0]))
-        self.Epochs |= { ep.split("_")[1] : None for ep in Files}
-        self.ModelSaves["TorchSave"] |= { ep.split("_")[1] : self.Dir + "/TorchSave/" + ep for ep in Files} 
-
-        Files = self.ListFilesInDir(self.Dir + "/TorchScript")
-        self.ModelSaves["TorchScript"] |= { ep.split("_")[1] : self.Dir + "/TorchScript/" + ep for ep in Files} 
-        
-        Files = self.ListFilesInDir(self.Dir + "/Statistics")
-        self.ModelSaves["Training"] |= { ep.split("_")[1].replace(".pkl", "") : self.Dir + "/Statistics/" + ep for ep in Files}
     
-    def MakeEpochs(self):
-        for ep in self.Epochs:
-            self.Epochs[ep] = Epoch()
-            self.Epochs[ep].Epoch = ep
-            self.Epochs[ep].ModelName = self.Name
-            self.Epochs[ep].TrainStats = self.ModelSaves["Training"][ep]
-            self.Epochs[ep].TorchSave = self.ModelSaves["TorchSave"][ep]
-            self.Epochs[ep].TorchScript = self.ModelSaves["TorchScript"][ep]
-            self.Epochs[ep].Device = self.Device
+    def DumpEpoch(self, ModeType, OutputDir):
+        def ParticleDumping(Pred_Mass, Truth_Mass, Effic, Key):
+            Output = {}
+            for i in Pred_Mass:
+                Output[Key + "ParticleMass/"+ i + "/MassDistribution_TH1FStack|Truth|Prediction.GeV.Entries"] = {"|Truth" : self.UnNestDict(Truth_Mass[i]), "|Prediction" : self.UnNestDict(Pred_Mass[i])}
+                
+                prc = self.CollectKeyNestDict(Effic[i], "Prc")
+                per = self.CollectKeyNestDict(Effic[i], "%")
+                Output[Key + "ParticleMass/"+ i + "/ProcessReconstructionEfficiency_Point.Epoch.%"] = {p : [ per[k] for k in range(len(prc)) if prc[k] == p ] for p in list(set(prc))}
     
-    def AnalyzeDataCompatibility(self):
-        if len(self.Data) == 0:
-            return False
-        self._init = False
-        self.Model = torch.load(self.Dir + "/TorchSave/" + self.ModelSaves["Base"])
-        self.Sample = list(self.Data.values())[0].Data
-        self.InitializeModel()
-        self.GetTruthFlags(FEAT = "E")
-        self.GetTruthFlags(FEAT = "N")
-        self.GetTruthFlags(FEAT = "G")
+                ntru = self.CollectKeyNestDict(Effic[i], "ntru")
+                Output[Key + "ParticleMass/"+ i + "/SampleProcessComposition_TH1FStack|Truth|Predicted.n-Particles.Entries"] = {p + "|Truth" : [ ntru[k] for k in range(len(prc)) if prc[k] == p ] for p in list(set(prc))}
+    
+                pred = self.CollectKeyNestDict(Effic[i], "nrec")
+                Output[Key + "ParticleMass/"+ i + "/SampleProcessComposition_TH1FStack|Truth|Predicted.n-Particles.Entries"] |= {p + "|Predicted" : [ pred[k] for k in range(len(prc)) if prc[k] == p ] for p in list(set(prc))}
+    
+                Output[Key + "ParticleMass/" + i + "/AllCollectedParticles_Point.Epoch.%"] = (float(sum(pred)/sum(ntru)))*100
+            return Output
+        def ROCDumping(ROC_Dict):
+            Output = {}
+            Title = "ROC/CombinedFeatures_ROC|AUC=.False Positive Rate.True Positive Rate"
+            Output[Title] = {}
+            Output["AUC/AllCollected_Point.Epoch.AUC"] = {}
+            for feat in ROC_Dict:
+                Output[Title] |= { feat + "|AUC=" + str(round(ROC_Dict[feat]["auc"][0], 3)) : {"False Positive Rate" : ROC_Dict[feat]["fpr"], "True Positive Rate" : ROC_Dict[feat]["tpr"]} }
+                Output["AUC/AllCollected_Point.Epoch.AUC"] |= {feat : ROC_Dict[feat]["auc"]}
+            return Output
+
+        def DumpSampleLoss(Feat, LossDict):
+            return {"Loss/" + Feat + "/LossPlot_Point.Epoch.Loss" : LossDict[Feat]}
+
+        def DumpSampleAccuracy(Feat, AccDict):
+            return {"Accuracy/" + Feat + "/AccuracyPlot_Point.Epoch.Accuracy (%)" : AccDict[Feat]}
         
-        for i in self.Epochs:
-            self.Epochs[i].ModelInputs = self.ModelInputs
-            self.Epochs[i].ModelOutputs = self.ModelOutputs
-            self.Epochs[i].T_Features = self.T_Features
-            self.Epochs[i].Model = self.Model
+        def DumpTime():
+            Output = {
+                        "Time/EpochTime_Point.Epoch.Time (s)" : self.EpochTime, 
+                        "Time/NodeTime_TH1FStack.Nodes.Time (s)" : self.NodeTime
+                     }
+            return Output
         
-    def CompileTrainingStatistics(self):
-        for ep in self.Epochs:
-            self.Epochs[ep].CompileTraining()
-
-    def CompileTestData(self):
-        for ep in self.Epochs:
-            self.Epochs[ep].PredictInput(self.Data)
-
-
-
-
-
+        self.mkdir(OutputDir + "/" + self.ModelName + "/" + ModeType + "/Epochs/")
+        Out = {}
+        Out |= ParticleDumping(self.EdgeFeatureMass, self.TruthEdgeFeatureMass, self.EdgeParticleEfficiency, "Edge")
+        Out |= ParticleDumping(self.NodeFeatureMass, self.TruthNodeFeatureMass, self.NodeParticleEfficiency, "Node")
+        Out |= ROCDumping(self.ROC)
+        
+        for metric in self.Stats:
+            for feat in self.Stats[metric]:
+                Out |= DumpSampleAccuracy(feat, self.Stats[metric]) if "_Accuracy" in metric else DumpSampleLoss(feat, self.Stats[metric])
+       
+        for key in self.__dict__:
+            val = self.__dict__[key]
+            if key.startswith("Node"):
+                continue
+            if key.endswith("Loss"):
+                Out[key.split("Loss")[0]] = {}
+                for feat in val:
+                    Out[key.split("Loss")[0]] |= DumpSampleLoss(feat, val)
+            elif key.endswith("Accuracy"):
+                Out[key.split("Accuracy")[0]] = {}
+                for feat in val:
+                    Out[key.split("Accuracy")[0]] |= DumpSampleLoss(feat, val)
+        
+        if len(self.Stats) == 0:
+            Out |= DumpTime()
+        PickleObject(Out, str(self.Epoch), OutputDir + "/" + self.ModelName + "/" + ModeType + "/Epochs/") 
+        self.Flush()
