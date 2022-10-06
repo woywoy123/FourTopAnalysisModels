@@ -171,23 +171,24 @@ class ModelContainer(Tools, Reconstructor):
                 inpt[i] = [int(out[1]), {out[0] :  UnpickleObject(out[2])}]
             return inpt
         
+        
         ModelDir = self.OutputDirectory + "/" + self.Name
+        self.Figure = FigureContainer()
+        self.Figure.OutputDirectory = ModelDir
+
         Epochs = []
         Modes = self.ListFilesInDir(ModelDir)
         for mode in Modes:
             for pkl in self.ListFilesInDir(ModelDir + "/" + mode + "/Epochs/"):
                 Epochs.append([mode, int(pkl.replace(".pkl", "")), ModelDir + "/" + mode + "/Epochs/" + pkl])
+            break
 
         TH = Threading(Epochs, Function, self.Threads, self.chnks)
         TH.Start()
-        Container = {}
         for c in TH._lists:
-            if c[0] not in Container:
-                Container[c[0]] = {}
-            Container[c[0]] |= c[1] 
-        Epochs = list(Container)
-        Epochs.sort()
+            self.Figure.AddEpoch(c[0], c[1])  
+        
+        self.Figure.Compile()
 
-        self.Figure = FigureContainer(Epochs, Container)
 
 

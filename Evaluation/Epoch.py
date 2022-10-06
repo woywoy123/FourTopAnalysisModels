@@ -61,7 +61,7 @@ class Epoch(Tools, Optimizer, Metrics):
             for metric in Metrics:
                 for feat in self.TrainStats[metric]:
                     inpt = self.TrainStats[metric][feat][nodes]
-                    self.CollectMetric("Node"+metric.replace("_", ""), self.TrainStats[metric], nodes, inpt)
+                    self.CollectMetric("Node"+metric.replace("_", ""), self.TrainStats[metric][feat], str(nodes) + "/" + feat, inpt)
         del self.TrainStats
     
     def PredictOutput(self, Data, idx):
