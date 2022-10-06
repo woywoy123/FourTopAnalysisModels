@@ -33,31 +33,30 @@ class Epoch(Tools, Optimizer, Metrics):
         self.EdgeParticleEfficiency = {}
 
     def CollectMetric(self, name, key, feature, inpt):
-        if hasattr(self, name) == False:
-            setattr(self, name, {})
-        if feature not in getattr(self, name):
-            d = getattr(self, name)
-            d[feature] = []
+        if name not in self.Stats:
+            self.Stats[name] = {}
+        if feature not in self.Stats[name]:
+            self.Stats[name][feature] = []
         for i in self.TraverseDictionary(inpt, key):
-            d[feature] += self.UnNestList(i)
+            self.Stats[name][feature] += self.UnNestList(i)
 
     def CompileTraining(self):
         self.TrainStats = UnpickleObject(self.TrainStats)
-        self.EpochTime = self.TrainStats["EpochTime"][0]
+        self.Stats["EpochTime"] = self.TrainStats["EpochTime"][0]
 
         Metrics = ["Training_Loss", "Training_Accuracy", "Validation_Loss", "Validation_Accuracy"]
         for metric in Metrics:
             for feat in self.TrainStats[metric]:
                 self.CollectMetric(metric.replace("_", ""), metric + "/" + feat, feat, self.TrainStats)
       
-        self.FoldTime = []
-        self.KFolds = []
+        self.Stats["FoldTime"] = []
+        self.Stats["KFolds"] = []
         for k in range(len(self.TrainStats["kFold"])):
             nodes = self.TrainStats["Nodes"][k]
             self.CollectMetric("NodeTime", "FoldTime", nodes, self.TrainStats)
             
-            self.FoldTime += self.TrainStats["FoldTime"][k]
-            self.KFolds += self.TrainStats["kFold"][k]
+            self.Stats["FoldTime"] += self.TrainStats["FoldTime"][k]
+            self.Stats["KFolds"] += self.TrainStats["kFold"][k]
             
             for metric in Metrics:
                 for feat in self.TrainStats[metric]:
@@ -110,35 +109,43 @@ class Epoch(Tools, Optimizer, Metrics):
         def ParticleDumping(Pred_Mass, Truth_Mass, Effic, Key):
             Output = {}
             for i in Pred_Mass:
-                Output[Key + "ParticleMass/"+ i + "/MassDistribution_TH1FStack|Truth|Prediction.GeV.Entries"] = {"|Truth" : self.UnNestDict(Truth_Mass[i]), "|Prediction" : self.UnNestDict(Pred_Mass[i])}
+                Title = Key + "ParticleMass/"+ i + "/MassDistribution_TH1FStack|Truth|Prediction.GeV.Entries"
+                Output[Title] = {"|Truth" : self.UnNestDict(Truth_Mass[i]), "|Prediction" : self.UnNestDict(Pred_Mass[i])}
                 
                 prc = self.CollectKeyNestDict(Effic[i], "Prc")
                 per = self.CollectKeyNestDict(Effic[i], "%")
-                Output[Key + "ParticleMass/"+ i + "/ProcessReconstructionEfficiency_Point.Epoch.%"] = {p : [ per[k] for k in range(len(prc)) if prc[k] == p ] for p in list(set(prc))}
+                Title = Key + "ParticleMass/"+ i + "/ProcessReconstructionEfficiency_Point.Epoch.%"
+                Output[Title] = {p : [ per[k] for k in range(len(prc)) if prc[k] == p ] for p in list(set(prc))}
     
                 ntru = self.CollectKeyNestDict(Effic[i], "ntru")
-                Output[Key + "ParticleMass/"+ i + "/SampleProcessComposition_TH1FStack|Truth|Predicted.n-Particles.Entries"] = {p + "|Truth" : [ ntru[k] for k in range(len(prc)) if prc[k] == p ] for p in list(set(prc))}
+                Title = Key + "ParticleMass/"+ i + "/SampleProcessComposition_TH1FStack|Truth|Predicted.n-Particles.Entries"
+                Output[Title] = {p + "|Truth" : [ ntru[k] for k in range(len(prc)) if prc[k] == p ] for p in list(set(prc))}
     
                 pred = self.CollectKeyNestDict(Effic[i], "nrec")
-                Output[Key + "ParticleMass/"+ i + "/SampleProcessComposition_TH1FStack|Truth|Predicted.n-Particles.Entries"] |= {p + "|Predicted" : [ pred[k] for k in range(len(prc)) if prc[k] == p ] for p in list(set(prc))}
-    
-                Output[Key + "ParticleMass/" + i + "/AllCollectedParticles_Point.Epoch.%"] = (float(sum(pred)/sum(ntru)))*100
+                Output[Title] |= {p + "|Predicted" : [ pred[k] for k in range(len(prc)) if prc[k] == p ] for p in list(set(prc))}
+   
+                Title = Key + "ParticleMass/" + i + "/AllCollectedParticles_Point.Epoch.%"
+                Output[Title] = (float(sum(pred)/sum(ntru)))*100
             return Output
+
         def ROCDumping(ROC_Dict):
             Output = {}
             Title = "ROC/CombinedFeatures_ROC|AUC=.False Positive Rate.True Positive Rate"
             Output[Title] = {}
             Output["AUC/AllCollected_Point.Epoch.AUC"] = {}
             for feat in ROC_Dict:
-                Output[Title] |= { feat + "|AUC=" + str(round(ROC_Dict[feat]["auc"][0], 3)) : {"False Positive Rate" : ROC_Dict[feat]["fpr"], "True Positive Rate" : ROC_Dict[feat]["tpr"]} }
+                Output[Title] |= { 
+                                    feat + "|AUC=" + str(round(ROC_Dict[feat]["auc"][0], 3)) : 
+                                    {"False Positive Rate" : ROC_Dict[feat]["fpr"], "True Positive Rate" : ROC_Dict[feat]["tpr"]} 
+                                }
                 Output["AUC/AllCollected_Point.Epoch.AUC"] |= {feat : ROC_Dict[feat]["auc"]}
             return Output
 
         def DumpSampleLoss(Feat, LossDict):
-            return {"Loss/" + Feat + "/LossPlot_Point.Epoch.Loss" : LossDict[Feat]}
+            return {"Loss/" + Feat + "/LossPlot_Point.Epoch.Loss" : []} #LossDict[Feat]}
 
         def DumpSampleAccuracy(Feat, AccDict):
-            return {"Accuracy/" + Feat + "/AccuracyPlot_Point.Epoch.Accuracy (%)" : AccDict[Feat]}
+            return {"Accuracy/" + Feat + "/AccuracyPlot_Point.Epoch.Accuracy (%)" : []} #AccDict[Feat]}
         
         def DumpTime():
             Output = {
@@ -149,28 +156,16 @@ class Epoch(Tools, Optimizer, Metrics):
         
         self.mkdir(OutputDir + "/" + self.ModelName + "/" + ModeType + "/Epochs/")
         Out = {}
-        Out |= ParticleDumping(self.EdgeFeatureMass, self.TruthEdgeFeatureMass, self.EdgeParticleEfficiency, "Edge")
-        Out |= ParticleDumping(self.NodeFeatureMass, self.TruthNodeFeatureMass, self.NodeParticleEfficiency, "Node")
-        Out |= ROCDumping(self.ROC)
-        
-        for metric in self.Stats:
-            for feat in self.Stats[metric]:
-                Out |= DumpSampleAccuracy(feat, self.Stats[metric]) if "_Accuracy" in metric else DumpSampleLoss(feat, self.Stats[metric])
-       
-        for key in self.__dict__:
-            val = self.__dict__[key]
-            if key.startswith("Node"):
-                continue
-            if key.endswith("Loss"):
-                Out[key.split("Loss")[0]] = {}
-                for feat in val:
-                    Out[key.split("Loss")[0]] |= DumpSampleLoss(feat, val)
-            elif key.endswith("Accuracy"):
-                Out[key.split("Accuracy")[0]] = {}
-                for feat in val:
-                    Out[key.split("Accuracy")[0]] |= DumpSampleLoss(feat, val)
-        
-        if len(self.Stats) == 0:
-            Out |= DumpTime()
+        if ModeType == "training": 
+            Out |= self.Stats
+            self.Stats = {}
+        else:
+            for metric in self.Stats:
+                for feat in self.Stats[metric]:
+                    Out |= DumpSampleAccuracy(feat, self.Stats[metric]) if "_Accuracy" in metric else DumpSampleLoss(feat, self.Stats[metric])
+            
+            Out |= ParticleDumping(self.EdgeFeatureMass, self.TruthEdgeFeatureMass, self.EdgeParticleEfficiency, "Edge")
+            Out |= ParticleDumping(self.NodeFeatureMass, self.TruthNodeFeatureMass, self.NodeParticleEfficiency, "Node")
+            Out |= ROCDumping(self.ROC)
+            self.Flush()
         PickleObject(Out, str(self.Epoch), OutputDir + "/" + self.ModelName + "/" + ModeType + "/Epochs/") 
-        self.Flush()

@@ -15,6 +15,8 @@ class ModelEvaluator(Tools, Notification):
         self.MakeTrainingPlots = True
         self.Device = "cuda"
         self.VerboseLevel = 3
+        self.Threads = 12
+        self.chnks = 20
         self.Caller = "ModelEvaluator"
 
     def AddFileTraces(self, Directory):
@@ -30,6 +32,8 @@ class ModelEvaluator(Tools, Notification):
         self._Models[ModelName].Dir = Directory
         self._Models[ModelName].Device = self.Device
         self._Models[ModelName].VerboseLevel = self.VerboseLevel
+        self._Models[ModelName].Threads = self.Threads
+        self._Models[ModelName].chnks = self.chnks
     
     def __AddFeatureToModel(self, obj, name, dic, feat):
         inter = getattr(obj, name)
@@ -64,31 +68,32 @@ class ModelEvaluator(Tools, Notification):
 
 
     def Compile(self, OutputDirectory):
-        self.mkdir(OutputDirectory + "/HDF5")
-        DataContainer = SampleContainer()
-        DataContainer.Device = self.Device
-        DataContainer.random = self.BuildDataRandom
-        DataContainer.Size = self.BuildDataPercentage
-        DataContainer.DataCache = self._rootDir + "/DataCache"
-        DataContainer.FileTrace = self._rootDir + "/FileTraces/FileTraces.pkl"
-        DataContainer.TrainingSample = self._rootDir + "/FileTraces/TrainingSample.pkl"
-        DataContainer.HDF5 = self.abs(OutputDirectory + "/HDF5")
-        DataContainer.Collect()
-        if self.BuildData:
-            DataContainer.MakeSamples()
-            DataContainer.Compile()
+        #self.mkdir(OutputDirectory + "/HDF5")
+        #DataContainer = SampleContainer()
+        #DataContainer.Device = self.Device
+        #DataContainer.random = self.BuildDataRandom
+        #DataContainer.Size = self.BuildDataPercentage
+        #DataContainer.DataCache = self._rootDir + "/DataCache"
+        #DataContainer.FileTrace = self._rootDir + "/FileTraces/FileTraces.pkl"
+        #DataContainer.TrainingSample = self._rootDir + "/FileTraces/TrainingSample.pkl"
+        #DataContainer.HDF5 = self.abs(OutputDirectory + "/HDF5")
+        #DataContainer.Collect()
+        #if self.BuildData:
+        #    DataContainer.MakeSamples()
+        #    DataContainer.Compile()
        
         for i in self._Models:
             self._Models[i].Collect()
             self._Models[i].MakeEpochs()
+            self._Models[i].OutputDirectory = OutputDirectory
             
-            self._Models[i].Data = DataContainer.SampleMap
-            self._Models[i].AnalyzeDataCompatibility()
+            #self._Models[i].Data = DataContainer.SampleMap
+            #self._Models[i].AnalyzeDataCompatibility()
 
             if self.MakeTrainingPlots:
-                self._Models[i].CompileTrainingStatistics(OutputDirectory)
-            self._Models[i].CompileResults("test", OutputDirectory)
-            self._Models[i].CompileResults("train", OutputDirectory)
-            self._Models[i].CompileResults("all", OutputDirectory)
-            
-            self._Models[i].DumpModel(OutputDirectory)
+                self._Models[i].CompileTrainingStatistics()
+        #    self._Models[i].CompileResults("test")
+        #    self._Models[i].CompileResults("train")
+        #    self._Models[i].CompileResults("all")
+        #    
+            self._Models[i].MergeEpochs()

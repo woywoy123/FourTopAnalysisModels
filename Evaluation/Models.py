@@ -1,8 +1,10 @@
 from Tooling import Tools 
 from Epoch import Epoch
+from Figures import * 
 from AnalysisTopGNN.Generators import ModelImporter
-from AnalysisTopGNN.Tools import Notification
+from AnalysisTopGNN.Tools import Notification, Threading
 from AnalysisTopGNN.Reconstruction import Reconstructor
+from AnalysisTopGNN.IO import UnpickleObject
 import torch
 
 class ModelContainer(Tools, Reconstructor):
@@ -29,7 +31,11 @@ class ModelContainer(Tools, Reconstructor):
         self.Data = {}
         self.Dir = None
         self.VerboseLevel = 0
+        self.Threads = None
+        self.chnks = None
+
         self.Caller = "ModelContainer"
+        self.OutputDirectory = None
 
     def Collect(self):
         Files = self.ListFilesInDir(self.Dir + "/TorchSave")
@@ -91,12 +97,12 @@ class ModelContainer(Tools, Reconstructor):
             m = self.MassFromNodeFeature(i, **Features[i]["varnames"]).tolist() if Edge == False else m
             mass_dic[i][idx] = m
 
-    def CompileTrainingStatistics(self, OutputDir):
+    def CompileTrainingStatistics(self):
         for ep in self.Epochs:
             self.Epochs[ep].CompileTraining()
-            self.Epochs[ep].DumpEpoch("training", OutputDir) 
+            self.Epochs[ep].DumpEpoch("training", self.OutputDirectory) 
 
-    def CompileResults(self, sample, OutputDir):
+    def CompileResults(self, sample):
         switch = True if sample == "test" else False
         switch = False if sample == "train" else switch
         switch = None if sample == "all" else switch
@@ -155,10 +161,33 @@ class ModelContainer(Tools, Reconstructor):
                     self.Epochs[ep].MakeROC(feat)
 
             self.Notify("(" + self.Name + ") DUMPED EPOCH: " + ep + " WITH SAMPLE: " + sample)
-            self.Epochs[ep].DumpEpoch(sample, OutputDir)
+            self.Epochs[ep].DumpEpoch(sample, self.OutputDirectory)
         
     
-    def DumpModel(self, OutputDirectory):
-        print(self.__dict__)
+    def MergeEpochs(self):
+        def Function(inpt):
+            for i in range(len(inpt)):
+                out = inpt[i]
+                inpt[i] = [int(out[1]), {out[0] :  UnpickleObject(out[2])}]
+            return inpt
+        
+        ModelDir = self.OutputDirectory + "/" + self.Name
+        Epochs = []
+        Modes = self.ListFilesInDir(ModelDir)
+        for mode in Modes:
+            for pkl in self.ListFilesInDir(ModelDir + "/" + mode + "/Epochs/"):
+                Epochs.append([mode, int(pkl.replace(".pkl", "")), ModelDir + "/" + mode + "/Epochs/" + pkl])
+
+        TH = Threading(Epochs, Function, self.Threads, self.chnks)
+        TH.Start()
+        Container = {}
+        for c in TH._lists:
+            if c[0] not in Container:
+                Container[c[0]] = {}
+            Container[c[0]] |= c[1] 
+        Epochs = list(Container)
+        Epochs.sort()
+
+        self.Figure = FigureContainer(Epochs, Container)
 
 
