@@ -15,7 +15,7 @@ class BasicBaseLine(MessagePassing):
         self.L_edge = "CEL"
         self.C_edge = True
 
-        end = 1024
+        end = 64
         self._isDR = Seq(Linear(2, end), Sigmoid(), Linear(end, end), Linear(end, end), Sigmoid(), Linear(end, 2))
         self._isMass = Seq(Linear(2, end), Sigmoid(), Linear(end, end), Linear(end, end), Sigmoid(), Linear(end, 2))
         self._topo = Seq(Linear(6, end), Sigmoid(), Linear(end, end), Sigmoid(), Linear(end, end), Linear(end, 2))
