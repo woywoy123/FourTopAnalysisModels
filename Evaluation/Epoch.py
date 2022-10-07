@@ -9,6 +9,7 @@ class Epoch(Tools, Optimizer, Metrics):
         self.Epoch = None
         self.ModelName = None       
         self.Model = None
+        self.ModelBase = None
         self.TorchSave = None
         self.TorchScript = None
         self.ONNX = None
@@ -32,6 +33,11 @@ class Epoch(Tools, Optimizer, Metrics):
         self.NodeParticleEfficiency = {}
         self.EdgeParticleEfficiency = {}
 
+    def LoadModel(self):
+        self.Model = torch.load(self.ModelBase)
+        state = torch.load(self.TorchSave)
+        self.Model.load_state_dict(state["state_dict"])
+
     def CollectMetric(self, name, key, feature, inpt):
         if name not in self.Stats:
             self.Stats[name] = {}
@@ -53,8 +59,6 @@ class Epoch(Tools, Optimizer, Metrics):
         self.Stats["KFolds"] = []
         for k in range(len(self.TrainStats["kFold"])):
             nodes = self.TrainStats["Nodes"][k]
-            self.CollectMetric("NodeTime", "FoldTime", nodes, self.TrainStats)
-            
             self.Stats["FoldTime"] += self.TrainStats["FoldTime"][k]
             self.Stats["KFolds"] += self.TrainStats["kFold"][k]
             
@@ -63,7 +67,7 @@ class Epoch(Tools, Optimizer, Metrics):
                     inpt = self.TrainStats[metric][feat][nodes]
                     self.CollectMetric("Node"+metric.replace("_", ""), self.TrainStats[metric][feat], str(nodes) + "/" + feat, inpt)
         del self.TrainStats
-    
+   
     def PredictOutput(self, Data, idx):
         truth, pred = self.Train(Data[idx].Data)
         for feat in list(pred):
@@ -81,7 +85,6 @@ class Epoch(Tools, Optimizer, Metrics):
         return pred
 
     def Flush(self):
-        self.Model.load_state_dict(torch.load(self.TorchSave)["state_dict"])
         self.Stats = {}
         self.ROC = {}
         self.NodeFeatureMass = {}
@@ -90,6 +93,8 @@ class Epoch(Tools, Optimizer, Metrics):
         self.TruthEdgeFeatureMass = {}
         self.NodeParticleEfficiency = {}
         self.EdgeParticleEfficiency = {}
+        del self.Model
+        self.Model = None
         if self.Debug:
             self.MakeContainer(self.Debug)
 
@@ -109,50 +114,42 @@ class Epoch(Tools, Optimizer, Metrics):
         def ParticleDumping(Pred_Mass, Truth_Mass, Effic, Key):
             Output = {}
             for i in Pred_Mass:
-                Title = Key + "ParticleMass/"+ i + "/MassDistribution_TH1FStack|Truth|Prediction.GeV.Entries"
-                Output[Title] = {"|Truth" : self.UnNestDict(Truth_Mass[i]), "|Prediction" : self.UnNestDict(Pred_Mass[i])}
+                Title = Key + "ParticleMass/"+ i + "/MassDistribution"
+                Output[Title] = {"Truth" : self.UnNestDict(Truth_Mass[i]), "Prediction" : self.UnNestDict(Pred_Mass[i])}
                 
                 prc = self.CollectKeyNestDict(Effic[i], "Prc")
                 per = self.CollectKeyNestDict(Effic[i], "%")
-                Title = Key + "ParticleMass/"+ i + "/ProcessReconstructionEfficiency_Point.Epoch.%"
+                Title = Key + "ParticleMass/"+ i + "/ProcessEfficiency"
                 Output[Title] = {p : [ per[k] for k in range(len(prc)) if prc[k] == p ] for p in list(set(prc))}
     
                 ntru = self.CollectKeyNestDict(Effic[i], "ntru")
-                Title = Key + "ParticleMass/"+ i + "/SampleProcessComposition_TH1FStack|Truth|Predicted.n-Particles.Entries"
-                Output[Title] = {p + "|Truth" : [ ntru[k] for k in range(len(prc)) if prc[k] == p ] for p in list(set(prc))}
+                Title = Key + "ParticleMass/"+ i + "/SampleComposition"
+                Output[Title] = {p + "Truth" : [ ntru[k] for k in range(len(prc)) if prc[k] == p ] for p in list(set(prc))}
     
                 pred = self.CollectKeyNestDict(Effic[i], "nrec")
-                Output[Title] |= {p + "|Predicted" : [ pred[k] for k in range(len(prc)) if prc[k] == p ] for p in list(set(prc))}
+                Output[Title] |= {p + "Predicted" : [ pred[k] for k in range(len(prc)) if prc[k] == p ] for p in list(set(prc))}
    
-                Title = Key + "ParticleMass/" + i + "/AllCollectedParticles_Point.Epoch.%"
+                Title = Key + "ParticleMass/" + i + "/AllCollectedParticles"
                 Output[Title] = (float(sum(pred)/sum(ntru)))*100
             return Output
 
         def ROCDumping(ROC_Dict):
             Output = {}
-            Title = "ROC/CombinedFeatures_ROC|AUC=.False Positive Rate.True Positive Rate"
+            Title = "ROC/CombinedFeatures"
             Output[Title] = {}
-            Output["AUC/AllCollected_Point.Epoch.AUC"] = {}
+            Output["AUC/AllCollected"] = {}
             for feat in ROC_Dict:
                 Output[Title] |= { 
-                                    feat + "|AUC=" + str(round(ROC_Dict[feat]["auc"][0], 3)) : 
-                                    {"False Positive Rate" : ROC_Dict[feat]["fpr"], "True Positive Rate" : ROC_Dict[feat]["tpr"]} 
+                                    feat : {"FPR" : ROC_Dict[feat]["fpr"], "TPR" : ROC_Dict[feat]["tpr"]} 
                                 }
-                Output["AUC/AllCollected_Point.Epoch.AUC"] |= {feat : ROC_Dict[feat]["auc"]}
+                Output["AUC/AllCollected"] |= {feat : ROC_Dict[feat]["auc"]}
             return Output
 
         def DumpSampleLoss(Feat, LossDict):
-            return {"Loss/" + Feat + "/LossPlot_Point.Epoch.Loss" : []} #LossDict[Feat]}
+            return {"Loss/" + Feat : LossDict[Feat]}
 
         def DumpSampleAccuracy(Feat, AccDict):
-            return {"Accuracy/" + Feat + "/AccuracyPlot_Point.Epoch.Accuracy (%)" : []} #AccDict[Feat]}
-        
-        def DumpTime():
-            Output = {
-                        "Time/EpochTime_Point.Epoch.Time (s)" : self.EpochTime, 
-                        "Time/NodeTime_TH1FStack.Nodes.Time (s)" : self.NodeTime
-                     }
-            return Output
+            return {"Accuracy/" + Feat : AccDict[Feat]}
         
         self.mkdir(OutputDir + "/" + self.ModelName + "/" + ModeType + "/Epochs/")
         Out = {}
@@ -167,5 +164,6 @@ class Epoch(Tools, Optimizer, Metrics):
             Out |= ParticleDumping(self.EdgeFeatureMass, self.TruthEdgeFeatureMass, self.EdgeParticleEfficiency, "Edge")
             Out |= ParticleDumping(self.NodeFeatureMass, self.TruthNodeFeatureMass, self.NodeParticleEfficiency, "Node")
             Out |= ROCDumping(self.ROC)
-            self.Flush()
+        
+        self.Flush()
         PickleObject(Out, str(self.Epoch), OutputDir + "/" + self.ModelName + "/" + ModeType + "/Epochs/") 

@@ -17,6 +17,8 @@ class ModelEvaluator(Tools, Notification):
         self.VerboseLevel = 3
         self.Threads = 12
         self.chnks = 20
+        self.EpochMax = None
+        self.EpochMin = 0
         self.Caller = "ModelEvaluator"
 
     def AddFileTraces(self, Directory):
@@ -68,32 +70,34 @@ class ModelEvaluator(Tools, Notification):
 
 
     def Compile(self, OutputDirectory):
-        #self.mkdir(OutputDirectory + "/HDF5")
-        #DataContainer = SampleContainer()
-        #DataContainer.Device = self.Device
-        #DataContainer.random = self.BuildDataRandom
-        #DataContainer.Size = self.BuildDataPercentage
-        #DataContainer.DataCache = self._rootDir + "/DataCache"
-        #DataContainer.FileTrace = self._rootDir + "/FileTraces/FileTraces.pkl"
-        #DataContainer.TrainingSample = self._rootDir + "/FileTraces/TrainingSample.pkl"
-        #DataContainer.HDF5 = self.abs(OutputDirectory + "/HDF5")
-        #DataContainer.Collect()
-        #if self.BuildData:
-        #    DataContainer.MakeSamples()
-        #    DataContainer.Compile()
-       
+        self.mkdir(OutputDirectory + "/HDF5")
+        DataContainer = SampleContainer()
+        DataContainer.Device = self.Device
+        DataContainer.random = self.BuildDataRandom
+        DataContainer.Size = self.BuildDataPercentage
+        DataContainer.DataCache = self._rootDir + "/DataCache"
+        DataContainer.FileTrace = self._rootDir + "/FileTraces/FileTraces.pkl"
+        DataContainer.TrainingSample = self._rootDir + "/FileTraces/TrainingSample.pkl"
+        DataContainer.HDF5 = self.abs(OutputDirectory + "/HDF5")
+        DataContainer.Collect(self.BuildData)
+        DataContainer.MakeSamples()
+        DataContainer.Compile()
+        
+        Sample = list(DataContainer.SampleMap.values())[0].Data
+        Data = DataContainer.SampleMap
         for i in self._Models:
             self._Models[i].Collect()
-            self._Models[i].MakeEpochs()
+            self._Models[i].MakeEpochs(self.EpochMin, self.EpochMax)
             self._Models[i].OutputDirectory = OutputDirectory
             
-            #self._Models[i].Data = DataContainer.SampleMap
-            #self._Models[i].AnalyzeDataCompatibility()
+            self._Models[i].AnalyzeDataCompatibility(Sample)
 
             if self.MakeTrainingPlots:
                 self._Models[i].CompileTrainingStatistics()
-        #    self._Models[i].CompileResults("test")
-        #    self._Models[i].CompileResults("train")
-        #    self._Models[i].CompileResults("all")
-        #    
+            self._Models[i].CompileResults("test", Data)
+            self._Models[i].CompileResults("train", Data)
+            self._Models[i].CompileResults("all", Data)
+            self._Models[i].Purge()
+        
+        for i in self._Models:
             self._Models[i].MergeEpochs()
