@@ -69,7 +69,6 @@ class Metrics:
         truth = self.ROC[feature]["truth"]
         truth = torch.cat(truth, dim = 0).view(-1)
         truth = truth.detach().cpu().numpy()
-        
         p_score = self.ROC[feature]["pred_score"]
         p_score = torch.cat([p.softmax(dim = 1).max(1)[0] for p in p_score], dim = 0)
         p_score = p_score.detach().cpu().numpy()

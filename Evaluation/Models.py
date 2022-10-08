@@ -77,6 +77,11 @@ class ModelContainer(Tools, Reconstructor):
             self.Epochs[i].ModelOutputs = self.ModelOutputs
             self.Epochs[i].T_Features = self.T_Features
 
+    def CompileTrainingStatistics(self):
+        for ep in self.Epochs:
+            self.Epochs[ep].CompileTraining()
+            self.Epochs[ep].DumpEpoch("training", self.OutputDirectory) 
+
     def RebuildParticles(self, Features, Edge, idx):
        for i in Features:
             if Features[i]["Mass"] == False:
@@ -92,11 +97,6 @@ class ModelContainer(Tools, Reconstructor):
             m = self.MassFromEdgeFeature(i, **Features[i]["varnames"]).tolist() if Edge else []
             m = self.MassFromNodeFeature(i, **Features[i]["varnames"]).tolist() if Edge == False else m
             mass_dic[i][idx] = m
-
-    def CompileTrainingStatistics(self):
-        for ep in self.Epochs:
-            self.Epochs[ep].CompileTraining()
-            self.Epochs[ep].DumpEpoch("training", self.OutputDirectory) 
 
     def CompileResults(self, sample, Data):
         switch = True if sample == "test" else False

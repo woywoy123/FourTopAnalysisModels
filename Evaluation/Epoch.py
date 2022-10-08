@@ -77,11 +77,14 @@ class Epoch(Tools, Optimizer, Metrics):
                                    "idx" : [], "proc" : []
                                  }
 
+            pred[feat] = [pred[feat][0].detach(), pred[feat][1].detach()]
+            truth[feat] = [truth[feat][0], truth[feat][1]] 
             self.ROC[feat]["truth"].append(truth[feat][0])
             self.ROC[feat]["pred"].append(pred[feat][0])
             self.ROC[feat]["pred_score"].append(pred[feat][1]) 
             self.ROC[feat]["idx"].append(idx)
             self.ROC[feat]["proc"].append(Data[idx].prc)
+        
         return pred
 
     def Flush(self):

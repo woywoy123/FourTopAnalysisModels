@@ -49,14 +49,14 @@ class SampleContainer(Tools, EventGenerator):
         
         if Rebuild:
             smpl = list(self.SampleMap) 
-            if self.random: 
-                random.shuffle(smpl)
         else:
             rev = {self.SampleMap[i] : i for i in self.SampleMap}
             smpl = [rev[i.replace(".hdf5", "")] for i in self.ListFilesInDir(self.HDF5)]
             if len(smpl) == 0:
                 return self.Collect(True)
-            self.Size = 100
+        
+        if self.random: 
+            random.shuffle(smpl)
         
         self.SampleMap = {smpl[s] : self.SampleMap[smpl[s]] for s in range(int(len(smpl)*float(self.Size/100)))}
 

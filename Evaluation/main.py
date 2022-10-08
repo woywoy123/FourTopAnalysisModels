@@ -45,20 +45,20 @@
 #
 #x.Compile()
 
-Dir = "/CERN/AnalysisModelTraining/PreviousVersions/TruthTopChildrenModels/"
+Dir = "/media/tnom6927/Element/"
 OutputMap = [{"name" : "edge", "node" : "366"}]
 from Metrics import ModelEvaluator
 
 
 x = ModelEvaluator()
-x.BuildDataPercentage = 30
+x.BuildDataPercentage = 100
 x.BuildDataRandom = True
 x.BuildData = True
 x.MakeTrainingPlots = True
 x.EpochMax = 5
 x.AddFileTraces(Dir + "BasicBaseLineChildren")
 x.AddModel(Dir + "BasicBaseLineChildren/Models/BasicBaseLineRecursion_MRK1")
-x.AddModel(Dir + "BasicBaseLineChildren/Models/BasicBaseLineNominal_MRK1")
+x.AddModel(Dir + "BasicBaseLineChildren/Models/BasicBaseLineRecursion_MRK2")
 #x.DefineTorchScriptModel("BasicBaseLineRecursion_MRK1", OutputMap)
 x.ROCEdgeFeature("edge")
 x.MassEdgeFeature("edge")
