@@ -51,10 +51,11 @@ from Metrics import ModelEvaluator
 
 
 x = ModelEvaluator()
-x.BuildDataPercentage = 100
+x.BuildDataPercentage = 5
 x.BuildDataRandom = True
 x.BuildData = True
 x.MakeTrainingPlots = True
+x.MakePlotsOnly = True
 x.EpochMax = 5
 x.AddFileTraces(Dir + "BasicBaseLineChildren")
 x.AddModel(Dir + "BasicBaseLineChildren/Models/BasicBaseLineRecursion_MRK1")

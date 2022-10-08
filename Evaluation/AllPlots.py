@@ -1,7 +1,8 @@
 from Tooling import Template
 from AnalysisTopGNN.Plotting import TLine, TH1FStack
+from LogDump import LogDumper
 
-class Template(Template):
+class Template(Template, LogDumper):
 
     def __init__(self):
         pass        
@@ -21,76 +22,101 @@ class Template(Template):
 
         self.AddEpochEdge(dic, epoch)
         self.AddEpochNode(dic, epoch)
-
+    
     def Compile(self, Output, Mode = "all"):
+        self.Plots = {
+                "Accuracy" : None, 
+                "Loss" : None, 
+                "AUC" : None, 
+                "EdgeProcessEfficiency" : None, 
+                "EdgeEfficiency" : None, 
+                "NodeProcessEfficiency" : None, 
+                "NodeEfficiency" : None
+                }
+
         if len(self.Acc) == 0:
             self.Warning(Mode + " has no samples. Make the HDF5 sample larger. Skipping...")
             return 
+        
+        self.OutDir = Output + "/" + Mode + "/plots/"
         for i in self.Acc:
-            self.OutputDirectory = Output + "/" + Mode + "/plots/"
-            self.MakeAccuracyPlot(self.Acc, i, i, "-")
+            self.MakeAccuracyPlot(self.Acc, i, i, self.OutDir, "-")
+            self.MakeLossPlot(self.Loss, i, i, self.OutDir, "-")
 
-            self.OutputDirectory = Output + "/" + Mode + "/plots/"
-            self.MakeLossPlot(self.Loss, i, i, "-")
+        comb1 = self.MergePlots([self.Acc[i] for i in self.Acc], self.OutDir)
+        comb1.Title = "Accuracy of Predicted Features"
+        comb1.Filename = "AccuracyForAllFeatures"
+        comb1.SaveFigure()
+        self.Plots["Accuracy"] = comb1
 
-        self.OutputDirectory = Output + "/" + Mode + "/plots/"
-        comb = self.MergePlots([self.Acc[i] for i in self.Acc])
-        comb.Title = "Accuracy for Graph Neural Features"
-        comb.Filename = "AccuracyForAllFeatures"
-        comb.SaveFigure()
+        comb2 = self.MergePlots([self.Loss[i] for i in self.Loss], self.OutDir)
+        comb2.Title = "Loss of Predicted Features"
+        comb2.Filename = "LossForAllFeatures"
+        comb2.SaveFigure()
+        self.Plots["Loss"] = comb2
 
-
-        self.OutputDirectory = Output + "/" + Mode + "/plots/"
-        comb = self.MergePlots([self.Loss[i] for i in self.Loss])
-        comb.Title = "Loss for Graph Neural Features"
-        comb.Filename = "LossForAllFeatures"
-        comb.SaveFigure()
-       
         self.SortEpoch(self.ROC)
         for ep in self.ROC:
             Aggre = []
-            self.OutputDirectory = Output + "/" + Mode + "/plots/ROC-Epoch/"
             for feat in self.ROC[ep]:
-                plot = self.TemplateROC(self.OutputDirectory, self.ROC[ep][feat]["FPR"], self.ROC[ep][feat]["TPR"])
+                plot = self.TemplateROC(self.OutDir + "ROC-Epoch", self.ROC[ep][feat]["FPR"], self.ROC[ep][feat]["TPR"])
                 plot["Title"] = feat 
                 Aggre.append(TLine(**plot))
-            com = self.MergePlots(Aggre)
+            com = self.MergePlots(Aggre, self.OutDir + "ROC-Epoch")
             com.Title = "ROC Curve for Epoch " + str(ep)
             com.Filename = "Epoch_" + str(ep)
             com.SaveFigure() 
         
         for feat in self.AUC:
             self.SortEpoch(self.AUC[feat])
-            plot = self.TemplateTLine(Output + "/" + Mode + "/plots")
+            plot = self.TemplateROC(self.OutDir, list(self.AUC[feat]), self.UnNestList(list(self.AUC[feat].values())))
             plot["Title"] = feat
             plot["xTitle"] = "Epoch"
             plot["yTitle"] = "Area Under ROC Curve"
-            plot["xMin"] = 0
-            plot["yMin"] = 0 
-            plot["xMax"] = 1
-            plot["yMax"] = 1
-            plot["xData"] = list(self.AUC[feat])
-            plot["yData"] = self.UnNestList(list(self.AUC[feat].values()))
             self.AUC[feat] = TLine(**plot)
         
-        self.OutputDirectory = Output + "/" + Mode + "/plots"
-        com = self.MergePlots(list(self.AUC.values()))
-        com.Title = "Area under ROC Curve for All Features with respect to Epoch"
-        com.Filename = "AUC_AllFeatures"
-        com.SaveFigure()
+        comb3 = self.MergePlots(list(self.AUC.values()), self.OutDir)
+        comb3.Title = "Area under ROC Curve for All Features with respect to Epoch"
+        comb3.Filename = "AUC_AllFeatures"
+        comb3.SaveFigure()
+        self.Plots["AUC"] = comb3
         
-        out = Output + "/" + Mode + "/plots/EdgeMass-Epoch"
-        self.MakeMassPlot(self.EdgeMass, "Edge", out)
-        out = Output + "/" + Mode + "/plots/NodeMass-Epoch"
-        self.MakeMassPlot(self.NodeMass, "Node", out)
-        
-        self.OutputDirectory = Output + "/" + Mode + "/plots/ProcessReconstruction-Edge"
-        self.MakeReconstructionProcessEfficiency(self.EdgeMassPrcEff)       
-        self.MakeReconstructionEfficiency(self.EdgeMassAll) 
+        self.MakeMassPlot(self.EdgeMass, "Edge", self.OutDir + "EdgeMass-Epoch")
+        self.MakeMassPlot(self.NodeMass, "Node", self.OutDir + "NodeMass-Epoch")
 
-        self.OutputDirectory = Output + "/" + Mode + "/plots/ProcessReconstruction-Node"
-        self.MakeReconstructionProcessEfficiency(self.NodeMassPrcEff)      
-        self.MakeReconstructionEfficiency(self.NodeMassAll)
+        OutDir = self.OutDir + "ProcessReconstruction-Edge"
+        self.Plots["EdgeProcessEfficiency"] = self.MakeReconstructionProcessEfficiency(self.EdgeMassPrcEff, OutDir)       
+        self.Plots["EdgeEfficiency"] = self.MakeReconstructionEfficiency(self.EdgeMassAll, OutDir) 
+
+        OutDir = self.OutDir + "ProcessReconstruction-Node"
+        self.Plots["NodeProcessEfficiency"] = self.MakeReconstructionProcessEfficiency(self.NodeMassPrcEff, OutDir)      
+        self.Plots["NodeEfficiency"] = self.MakeReconstructionEfficiency(self.NodeMassAll, OutDir)
+
+        # ==== Write output log ===== #
+        self._S = " | "
+        
+        def MakeLog(lines, outname, yTitle):
+            for i in lines:
+                i.yTitle = yTitle
+            out = self.DumpTLines(lines)
+            self.WriteText(out, self.OutDir + "/logs/" + outname)
+
+        MakeLog(self.Plots["Accuracy"].Lines, "AccuracyOfAllFeatures", "%")
+        MakeLog(self.Plots["Loss"].Lines, "LossOfAllFeatures", "a.u")
+        MakeLog(self.Plots["AUC"].Lines, "AUC_AllFeatures", "a.u.c")
+        
+        lines = [] 
+        lines += self.Plots["EdgeEfficiency"].Lines
+        lines += self.Plots["NodeEfficiency"].Lines
+        MakeLog(lines, "ReconstructionEfficiency", "%")
+        
+        for i in self.Plots["EdgeProcessEfficiency"]:
+            MakeLog(self.Plots["EdgeProcessEfficiency"][i].Lines, "ProcessReconstructionEdgeFeature_"+i, "%")
+        
+        for i in self.Plots["NodeProcessEfficiency"]:
+            MakeLog(self.Plots["NodeProcessEfficiency"][i].Lines, "ProcessReconstructionNodeFeature_"+i, "%")
+ 
+        return self.Plots
 
 class Train(Template):
 

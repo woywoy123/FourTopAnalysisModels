@@ -1,10 +1,13 @@
 from Tooling import Template
+from LogDump import LogDumper
+
 from AnalysisTopGNN.Plotting.TemplateLines import TLine
 
-class Training(Template):
+
+class Training(Template, LogDumper):
     
     def __init__(self):
-
+        self._S = " | "
         self.ValidLoss = {}
         self.ValidAcc = {}
 
@@ -45,54 +48,40 @@ class Training(Template):
         self.Plots["ValidationLoss"] = {}
         self.Plots["TrainingAccuracy"] = {}
         self.Plots["ValidationAccuracy"] = {}
+        ToReturn = {} 
+        self.OutDir = Output + "/training/plots/"
         for feat in self.TrainLoss:
-            self.OutputDirectory = Output + "/training/plots/loss"
-            self.MakeLossPlot(self.TrainLoss, feat, "Training", "-")
-            self.MakeLossPlot(self.ValidLoss, feat, "Validation", "--")
+            self.MakeLossPlot(self.TrainLoss, feat, "Training", self.OutDir + "accuracy", "-")
+            self.MakeLossPlot(self.ValidLoss, feat, "Validation", self.OutDir + "accuracy", "--")
             
             self.Plots["TrainingLoss"] |= self.TrainLoss
             self.Plots["ValidationLoss"] |= self.ValidLoss
 
-            comb = self.MergePlots([self.TrainLoss[feat], self.ValidLoss[feat]])
+            comb = self.MergePlots([self.TrainLoss[feat], self.ValidLoss[feat]], self.OutDir + "loss")
             comb.Title = "Loss for Feature: " + feat
             comb.Filename = "Loss_" + feat
             comb.SaveFigure()
             
-            self.OutputDirectory = Output + "/training/plots/accuracy"
-            self.MakeAccuracyPlot(self.TrainAcc, feat, "Training", "-")
-            self.MakeAccuracyPlot(self.ValidAcc, feat, "Validation", "--")
+            self.MakeAccuracyPlot(self.TrainAcc, feat, "Training", self.OutDir + "loss", "-")
+            self.MakeAccuracyPlot(self.ValidAcc, feat, "Validation", self.OutDir + "loss", "--")
 
             self.Plots["TrainingAccuracy"] |= self.TrainAcc
             self.Plots["ValidationAccuracy"] |= self.ValidAcc
 
-            comb = self.MergePlots([self.TrainAcc[feat], self.ValidAcc[feat]])
+            comb = self.MergePlots([self.TrainAcc[feat], self.ValidAcc[feat]], self.OutDir + "accuracy")
             comb.Title = "Accuracy for Feature: " + feat
             comb.Filename = "Accuracy_" + feat
             comb.SaveFigure()
 
-        merge = []
-        for feat in self.TrainAcc:
-            self.TrainAcc[feat].Title = feat
-            self.TrainAcc[feat].Marker = None
-            self.TrainAcc[feat].Color = None
-            merge.append(self.TrainAcc[feat])
-        
-        self.OutputDirectory = Output + "/training/plots/accuracy"
-        Comb = self.MergePlots(merge)
-        Comb.Filename = "MergedFeatureTrainingAccuracy"
-        Comb.Title = "Accuracy for All Features - Training"
-        Comb.SaveFigure()
 
         loss, acc = {}, {}
         for node in self.NodeValidLoss:
             
-            self.OutputDirectory = Output + "/training/plots/loss"
-            self.MakeLossPlot(self.NodeValidLoss, node, "Validation", "-")
-            self.MakeLossPlot(self.NodeTrainLoss, node, "Training", "--")
+            self.MakeLossPlot(self.NodeValidLoss, node, "Validation", self.OutDir + "loss", "-")
+            self.MakeLossPlot(self.NodeTrainLoss, node, "Training", self.OutDir + "loss", "--")
             
-            self.OutputDirectory = Output + "/training/plots/accuracy"
-            self.MakeAccuracyPlot(self.NodeValidAcc, node, "Validation", "-")
-            self.MakeAccuracyPlot(self.NodeTrainAcc, node, "Training", "--")
+            self.MakeAccuracyPlot(self.NodeValidAcc, node, "Validation", self.OutDir + "accuracy", "-")
+            self.MakeAccuracyPlot(self.NodeTrainAcc, node, "Training", self.OutDir + "accuracy", "--")
 
             n = node.split("/")
             nd = n[0]
@@ -123,19 +112,32 @@ class Training(Template):
             acc[feat].append(self.NodeValidAcc[node])
             acc[feat].append(self.NodeTrainAcc[node])
 
-
         for feat in loss:
-            self.OutputDirectory = Output + "/training/plots/loss"
-            Comb = self.MergePlots(loss[feat])
+            Comb = self.MergePlots(loss[feat], self.OutDir + "loss")
             Comb.Filename = "NodeFeatureLoss_" + feat
             Comb.Title = "Loss of Feature " + feat
             Comb.SaveFigure()
 
-            self.OutputDirectory = Output + "/training/plots/accuracy"
-            Comb = self.MergePlots(acc[feat])
+            Comb = self.MergePlots(acc[feat], self.OutDir + "accuracy")
             Comb.Filename = "NodeFeatureAccuracy_" + feat
             Comb.Title = "Accuracy of Feature " + feat
             Comb.SaveFigure()
+ 
+
+        ToWrite = {}
+        for feat in self.Plots["TrainingLoss"]:
+            m = ["TrainingLoss", "ValidationLoss",  "TrainingAccuracy", "ValidationAccuracy"]
+            t = ["Training Loss", "Validation Loss",  "Training Accuracy", "Validation Accuracy"]
+            u = ["a.u", "a.u","%", "%"]
+            dump = []
+            for j, k, f in zip(m, t, u):
+                self.Plots[j][feat].Title = k
+                self.Plots[j][feat].yTitle = f
+                dump.append(self.Plots[j][feat])
+            ToWrite[feat] = self.DumpTLines(dump) 
+        
+        for i in ToWrite:
+            self.WriteText(ToWrite[i], self.OutDir + "/" + i)
         
         EpochT = {}
         for ep in range(len(self.Epochs)):
@@ -153,5 +155,19 @@ class Training(Template):
         TL = TLine(**Plot)
         TL.SaveFigure()
         self.Plots["EpochTime"] = TL
+        ToReturn["EpochTime"] = TL
 
+        merge = []
+        for feat in self.TrainAcc:
+            self.TrainAcc[feat].Title = feat
+            self.TrainAcc[feat].Marker = None
+            self.TrainAcc[feat].Color = None
+            merge.append(self.TrainAcc[feat])
 
+        Comb = self.MergePlots(merge, self.OutDir + "accuracy")
+        Comb.Filename = "MergedFeatureTrainingAccuracy"
+        Comb.Title = "Accuracy for All Features - Training"
+        Comb.SaveFigure()
+        ToReturn["Accuracy"] = Comb
+
+        return ToReturn 
