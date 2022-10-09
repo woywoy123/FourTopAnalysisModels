@@ -1,8 +1,9 @@
 from Tooling import Template
-from AnalysisTopGNN.Plotting import TLine, TH1FStack
 from LogDump import LogDumper
 
-class Template(Template, LogDumper):
+from AnalysisTopGNN.Plotting import TLine, TH1FStack
+
+class Common(Template, LogDumper):
 
     def __init__(self):
         pass        
@@ -25,14 +26,14 @@ class Template(Template, LogDumper):
     
     def Compile(self, Output, Mode = "all"):
         self.Plots = {
-                "Accuracy" : None, 
-                "Loss" : None, 
-                "AUC" : None, 
-                "EdgeProcessEfficiency" : None, 
-                "EdgeEfficiency" : None, 
-                "NodeProcessEfficiency" : None, 
-                "NodeEfficiency" : None
-                }
+                        "Accuracy" : None, 
+                        "Loss" : None, 
+                        "AUC" : None, 
+                        "EdgeProcessEfficiency" : None, 
+                        "EdgeEfficiency" : None, 
+                        "NodeProcessEfficiency" : None, 
+                        "NodeEfficiency" : None
+                    }
 
         if len(self.Acc) == 0:
             self.Warning(Mode + " has no samples. Make the HDF5 sample larger. Skipping...")
@@ -118,7 +119,7 @@ class Template(Template, LogDumper):
  
         return self.Plots
 
-class Train(Template):
+class Train(Common):
 
     def __init__(self):
         self.EdgeMass = {}
@@ -142,7 +143,7 @@ class Train(Template):
         self.Caller = "Train"
 
 
-class Test(Template):
+class Test(Common):
 
     def __init__(self):
         self.EdgeMass = {}
@@ -165,7 +166,7 @@ class Test(Template):
         self.VerboseLevel = 1
         self.Caller = "Test"
 
-class All(Template): 
+class All(Common): 
 
     def __init__(self):
         self.EdgeMass = {}

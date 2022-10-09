@@ -10,18 +10,21 @@ class ModelEvaluator(Tools, Notification):
     def __init__(self):
         self._rootDir = self.pwd()
         self._Models = {}
-        self.BuildDataRandom = False
-        self.BuildDataPercentage = 10
-        self.BuildData = True
-        self.MakeTrainingPlots = True
-        self.MakePlotsOnly = False
+        self.Caller = "ModelEvaluator"
         self.Device = "cuda"
         self.VerboseLevel = 3
+        
         self.Threads = 12
         self.chnks = 20
+        self.BuildDataPercentage = 10
+
+        self.BuildDataRandom = False
+        self.BuildData = True
+        self.MakePlotsOnly = False
+
+        self.MergeEpochs = True
         self.EpochMax = None
         self.EpochMin = 0
-        self.Caller = "ModelEvaluator"
 
     def AddFileTraces(self, Directory):
         if Directory.endswith("/"):
@@ -96,8 +99,7 @@ class ModelEvaluator(Tools, Notification):
                 
                 self._Models[i].AnalyzeDataCompatibility(Sample)
 
-                if self.MakeTrainingPlots:
-                    self._Models[i].CompileTrainingStatistics()
+                self._Models[i].CompileTrainingStatistics()
                 self._Models[i].CompileResults("test", Data)
                 self._Models[i].CompileResults("train", Data)
                 self._Models[i].CompileResults("all", Data)
@@ -107,7 +109,8 @@ class ModelEvaluator(Tools, Notification):
         M.OutputDirectory = OutputDirectory
         for i in self._Models:
             self._Models[i].OutputDirectory = OutputDirectory
-            self._Models[i].MergeEpochs()
+            if self.MergeEpochs:
+                self._Models[i].MergeEpochs()
             M.AddModel(i, self._Models[i]) 
         M.Compile() 
 

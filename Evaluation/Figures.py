@@ -2,6 +2,7 @@ from TrainingPlots import Training
 from AllPlots import All, Train, Test
 from Tooling import Template
 from LogDump import LogDumper
+from AnalysisTopGNN.Plotting import TLine, CombineTLine
    
 class FigureContainer:
 
@@ -29,7 +30,88 @@ class FigureContainer:
         self.AllPlots |= self.all.Compile(self.OutputDirectory, "all")
         #self.test.Compile(self.OutputDirectory, "test")
         #self.train.Compile(self.OutputDirectory, "train")
-           
+        
+        for i in self.TrainingPlots:
+            self.TrainingPlots[i] = self.TrainingPlots[i].DumpDict()
+        
+        for i in self.AllPlots:
+            if isinstance(self.AllPlots[i], dict):
+                for j in self.AllPlots[i]:
+                    self.AllPlots[i][j] = self.AllPlots[i][j].DumpDict()
+                continue
+            self.AllPlots[i] = self.AllPlots[i].DumpDict()
+
+
+        dumped = {"TrainingPlots" : self.TrainingPlots, 
+                "AllPlots" : self.AllPlots}
+        return dumped
+
+    def Rebuild(self, Dict):
+        def GetUniqueID(inpt):
+            for i in inpt:
+                if "_ID" not in inpt[i]:
+                    GetUniqueID(inpt[i])
+                    continue
+                self._ID[inpt[i]["_ID"]] = inpt[i]
+                _id = inpt[i]["Rebuild"] if "Rebuild" in inpt[i] else {}
+                self._ID |= _id
+        
+        def Rebuild(inpt):
+            out = {}
+            for i in inpt:
+                Type = inpt[i]["_TYPE"]
+                reco = {k : inpt[i][k] for k in inpt[i] if k not in ["_ID", "_TYPE", "Rebuild", "_temp", "_Varname"]}
+                if Type == "TLine":
+                    out[i] = TLine(**reco)
+                elif Type == "CombineTLine":
+                    out[i] = CombineTLine(**reco)
+            return out 
+
+        def Assign(inpt):
+            for i in inpt:
+                if "Rebuild" not in inpt[i]:
+                    continue
+                
+                for _id in inpt[i]["Rebuild"]:
+                    v = getattr(self._Out[i], inpt[i]["Rebuild"][_id]["_Varname"])
+                    if isinstance(v, list):
+                        v += [self._Out[_id]]
+                    else:
+                        v = self._Out[_id]
+                    setattr(self._Out[i], inpt[i]["Rebuild"][_id]["_Varname"], v)
+        
+        def Place(inpt):
+            for i in inpt:
+                if "_ID" not in inpt[i]:
+                    Place(inpt[i])
+                    continue
+                _id = inpt[i]["_ID"]
+                inpt[i] = self._Out[_id] 
+
+        self.TrainingPlots |= Dict["TrainingPlots"]
+        self.AllPlots |= Dict["AllPlots"]
+
+        self._ID = {}
+        GetUniqueID(self.AllPlots)
+        self._Out = Rebuild(self._ID)
+        Assign(self._ID)
+        Place(self.AllPlots)
+
+        self._ID = {}      
+        GetUniqueID(self.TrainingPlots)
+        self._Out = Rebuild(self._ID)
+        Assign(self._ID)
+        Place(self.TrainingPlots)
+
+
+
+
+
+
+
+
+
+
 
 class ModelComparison(Template, LogDumper):
 
@@ -64,13 +146,13 @@ class ModelComparison(Template, LogDumper):
         self.AllNodeEffPrc = {}
         self.AllNodeEff = {}
  
-
-
         self.OutputDirectory = None
         self.Colors = {}
         self._S = " | "
+        self._FinalResults = {}
 
     def AddModel(self, name, Model):
+        Model.LoadMergedEpochs()
         self.TrainingAccuracy[name] = Model.Figure.TrainingPlots["Accuracy"]
         self.EpochTime[name] = Model.Figure.TrainingPlots["EpochTime"]
 
@@ -85,14 +167,15 @@ class ModelComparison(Template, LogDumper):
         self.AllNodeEff[name] = Model.Figure.AllPlots["NodeEfficiency"]
 
     def Compare(self, dic, Title, xTitle, yTitle, yMax, Filename):
+        com = self.MergePlots(list(dic.values()), self.OutputDirectory)
         for i in dic:
             dic[i].Title = i
-        com = self.MergePlots(list(dic.values()), self.OutputDirectory)
         com.xTitle = xTitle
         com.yTitle = yTitle
         com.yMin = -0.1
         com.yMax = yMax
         com.Filename = Filename
+        self._FinalResults[(self.OutputDirectory + "/" + Filename).split("ModelComparison/")[-1].replace("/", "-")] = com.Lines
         com.Title = Title
         com.SaveFigure()
         out = self.DumpTLines(com.Lines)
@@ -156,6 +239,51 @@ class ModelComparison(Template, LogDumper):
             self.OutputDirectory = tmp + "/" + prc
             self.CompareReco(Dic[prc], prefix, " (" + prc +")")
 
+    def Summary(self):
+        self.Features = { i : {M : { "Score" : 0, "xData" : [], "yData" : [] } for M in self.Colors} for i in self._FinalResults}
+
+        for feat in self.Features:
+            for line in self._FinalResults[feat]:
+                if line.DoStatistics:
+                    self.Features[feat][line.Title]["xData"] += list(line.xData)
+                else:
+                    self.Features[feat][line.Title]["xData"] += line.xData
+                self.Features[feat][line.Title]["yData"] += line.yData       
+
+        for feat in self.Features:
+            perf = {ep : None for ep in self.Features[feat][list(self.Features[feat])[0]]["xData"]}
+            ModelName = {ep : [] for ep in self.Features[feat][list(self.Features[feat])[0]]["xData"]}
+            for model in self.Features[feat]:
+                coef = -1 if sum([1 for met in ["accuracy", "auc", "reco", "EpochTime"] if feat.startswith(met)]) > 0 else 1
+
+                for x, y in zip(self.Features[feat][model]["xData"], self.Features[feat][model]["yData"]):
+
+                    if perf[x] == None:
+                        perf[x] = y
+
+                    if perf[x] > y and coef == 1:
+                        perf[x] = y
+                        ModelName[x] = [model]
+
+                    elif perf[x] < y and coef == -1:
+                        perf[x] = y
+                        ModelName[x] = [model]
+
+                    elif perf[x] == y:
+                        perf[x] = y
+                        ModelName[x] += [model]
+            
+            count = self.UnNestDict(ModelName)
+            ModelScore = {m : float(count.count(m)/len(count)) for m in self.Colors}
+            for model in ModelScore:
+                self.Features[feat][model]["Score"] += ModelScore[model]
+                Dict = self.Features[feat][model]
+                Min, Max = min(Dict["yData"]), max(Dict["yData"])
+                MinIdx, MaxIdx = Dict["yData"].index(Min), Dict["yData"].index(Max)
+                Dict["MinMax"] = [Dict["xData"][MinIdx], Min, Dict["xData"][MaxIdx], Max]
+        out = self.DumpSummaryTable(self.Features)
+        self.WriteText(out, self.OutputDirectory + "/Summary.txt")
+
     def Compile(self):
         RootDir = self.OutputDirectory + "/ModelComparison"
         AccDir = RootDir + "/accuracy"
@@ -183,4 +311,7 @@ class ModelComparison(Template, LogDumper):
         self.CompareRecoByProcess(self.AllEdgeEffPrc, "edge-all")
         self.CompareRecoByProcess(self.AllNodeEffPrc, "node-all")
 
+
+        self.OutputDirectory = RootDir
+        self.Summary()
 

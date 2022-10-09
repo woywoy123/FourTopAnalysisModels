@@ -4,7 +4,7 @@ from Figures import *
 from AnalysisTopGNN.Generators import ModelImporter
 from AnalysisTopGNN.Tools import Notification, Threading
 from AnalysisTopGNN.Reconstruction import Reconstructor
-from AnalysisTopGNN.IO import UnpickleObject
+from AnalysisTopGNN.IO import UnpickleObject, PickleObject
 import torch
 
 class ModelContainer(Tools, Reconstructor):
@@ -48,12 +48,19 @@ class ModelContainer(Tools, Reconstructor):
         
         Files = self.ListFilesInDir(self.Dir + "/Statistics")
         self.ModelSaves["Training"] |= { ep.split("_")[1].replace(".pkl", "") : self.Dir + "/Statistics/" + ep for ep in Files}
-    
+
+        TrainParams = UnpickleObject(self.ModelSaves["Training"]["Done"])
+        self.TrainingParameters = {}
+        self.TrainingParameters |= {"BatchSize" : TrainParams["BatchSize"]} 
+        self.TrainingParameters |= TrainParams["Model"]
+        self.BatchSize = self.TrainingParameters["BatchSize"]
+
     def MakeEpochs(self, Min = 0, Max = None):
         self.SortEpoch(self.Epochs)
         self.Epochs = {i : self.Epochs[i] for i in list(self.Epochs)[Min : Max]}
         for ep in self.Epochs:
             self.Epochs[ep] = Epoch()
+            self.Epochs[ep].BatchSize = self.BatchSize
             self.Epochs[ep].Epoch = ep
             self.Epochs[ep].ModelName = self.Name
             self.Epochs[ep].TrainStats = self.ModelSaves["Training"][str(ep)]
@@ -98,16 +105,16 @@ class ModelContainer(Tools, Reconstructor):
             m = self.MassFromNodeFeature(i, **Features[i]["varnames"]).tolist() if Edge == False else m
             mass_dic[i][idx] = m
 
-    def CompileResults(self, sample, Data):
+    def CompileResults(self, sample, DataOriginal):
         switch = True if sample == "test" else False
         switch = False if sample == "train" else switch
         switch = None if sample == "all" else switch
         self.TruthMode = True
         self.EdgeFeatureMass = {}
         self.NodeFeatureMass = {}
+        Data = {idx : DataOriginal[idx] for idx in DataOriginal if DataOriginal[idx].train != switch }
+        
         for idx in Data:
-            if Data[idx].train == switch:
-                continue
             self._Results = Data[idx].Data
             self.Sample = Data[idx].Data
             self.RebuildParticles(self.EdgeFeatures, True, idx)
@@ -121,20 +128,24 @@ class ModelContainer(Tools, Reconstructor):
             self.Epochs[ep].TruthEdgeFeatureMass |= self.EdgeFeatureMass
             self.Epochs[ep].TruthNodeFeatureMass |= self.NodeFeatureMass
 
+        DataIdx, DataBatch = list(Data), list(Data.values())
+        DataIdx = [DataIdx[i : i+self.BatchSize] for i in range(0, len(DataIdx), self.BatchSize)]
+        DataBatch = [DataBatch[i : i+self.BatchSize] for i in range(0, len(DataBatch), self.BatchSize)]
+
         self.TruthMode = False
         for ep in self.Epochs:
 
             self.EdgeFeatureMass = {}
             self.NodeFeatureMass = {}
             self.Epochs[ep].LoadModel()
-            for idx in Data:
-                if Data[idx].train == switch:
-                    continue
-
-                self.Sample = Data[idx].Data
-                self._Results = self.Epochs[ep].PredictOutput(Data, idx)
+            
+            for data, idx in zip(DataBatch, DataIdx):
+                print(idx, data)
+                #self.Sample = Data[idx].Data
+                self._Results = self.Epochs[ep].PredictOutput(data, idx)
                 self._Results = { "O_" + i : self._Results[i][0] for i in self._Results}
                 
+                exit()
                 self.RebuildParticles(self.EdgeFeatures, True, idx)
                 self.RebuildParticles(self.NodeFeatures, False, idx)
                 
@@ -189,7 +200,12 @@ class ModelContainer(Tools, Reconstructor):
         TH.Start()
         for c in TH._lists:
             self.Figure.AddEpoch(c[0], c[1])  
-        self.Figure.Compile()
+        dump = self.Figure.Compile()
+        PickleObject(dump, "Epochs", ModelDir)
 
 
+    def LoadMergedEpochs(self):
+        Dict = UnpickleObject("Epochs", self.OutputDirectory + "/" + self.Name)
+        self.Figure = FigureContainer()
+        self.Figure.Rebuild(Dict)
 

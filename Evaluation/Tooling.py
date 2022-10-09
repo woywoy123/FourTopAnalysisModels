@@ -186,6 +186,8 @@ class Template(Tools, Notification):
 
     def MakeAccuracyPlot(self, InptDic, Feature, Title, OutDir, LineStyle = None):
         Config = self.MakeEpochTLine(InptDic, Feature, OutDir, Title, LineStyle)
+        for ep in Config["xData"]:
+            Config["xData"][ep] = [i*100 for i in Config["xData"][ep]]
         Config["yTitle"] = "Accuracy (%)"
         InptDic[Feature] = TLine(**Config)
 

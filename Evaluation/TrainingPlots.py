@@ -51,8 +51,8 @@ class Training(Template, LogDumper):
         ToReturn = {} 
         self.OutDir = Output + "/training/plots/"
         for feat in self.TrainLoss:
-            self.MakeLossPlot(self.TrainLoss, feat, "Training", self.OutDir + "accuracy", "-")
-            self.MakeLossPlot(self.ValidLoss, feat, "Validation", self.OutDir + "accuracy", "--")
+            self.MakeLossPlot(self.TrainLoss, feat, "Training", self.OutDir + "loss", "-")
+            self.MakeLossPlot(self.ValidLoss, feat, "Validation", self.OutDir + "loss", "--")
             
             self.Plots["TrainingLoss"] |= self.TrainLoss
             self.Plots["ValidationLoss"] |= self.ValidLoss
@@ -62,8 +62,8 @@ class Training(Template, LogDumper):
             comb.Filename = "Loss_" + feat
             comb.SaveFigure()
             
-            self.MakeAccuracyPlot(self.TrainAcc, feat, "Training", self.OutDir + "loss", "-")
-            self.MakeAccuracyPlot(self.ValidAcc, feat, "Validation", self.OutDir + "loss", "--")
+            self.MakeAccuracyPlot(self.TrainAcc, feat, "Training", self.OutDir + "accuracy", "-")
+            self.MakeAccuracyPlot(self.ValidAcc, feat, "Validation", self.OutDir + "accuracy", "--")
 
             self.Plots["TrainingAccuracy"] |= self.TrainAcc
             self.Plots["ValidationAccuracy"] |= self.ValidAcc

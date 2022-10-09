@@ -2,6 +2,8 @@ from AnalysisTopGNN.IO import UnpickleObject, PickleObject
 from AnalysisTopGNN.Generators import Optimizer
 from Tooling import Tools, Metrics
 import torch
+from torch_geometric.loader import DataLoader
+from torch_geometric.data import Batch
 
 class Epoch(Tools, Optimizer, Metrics):
 
@@ -19,6 +21,7 @@ class Epoch(Tools, Optimizer, Metrics):
         self.ModelTruth = None
         self.Training = False
         self.Device = None
+        self.BatchSize = None
         
         self.Debug = False
         self.Stats = {}
@@ -49,7 +52,6 @@ class Epoch(Tools, Optimizer, Metrics):
     def CompileTraining(self):
         self.TrainStats = UnpickleObject(self.TrainStats)
         self.Stats["EpochTime"] = self.TrainStats["EpochTime"][0]
-
         Metrics = ["Training_Loss", "Training_Accuracy", "Validation_Loss", "Validation_Accuracy"]
         for metric in Metrics:
             for feat in self.TrainStats[metric]:
@@ -69,21 +71,32 @@ class Epoch(Tools, Optimizer, Metrics):
         del self.TrainStats
    
     def PredictOutput(self, Data, idx):
-        truth, pred = self.Train(Data[idx].Data)
+
+        data = [D.Data for D in Data]
+        inpt = next(iter(DataLoader(data, batch_size = self.BatchSize)))
+        batch = inpt.batch
+        truth, pred = self.Train(inpt)
         for feat in list(pred):
             if feat not in self.ROC:
                 self.ROC[feat] = { "fpr" : [], "tpr" : [], "auc" : [], 
                                    "truth" : [], "pred" : [], "pred_score" : [], 
                                    "idx" : [], "proc" : []
                                  }
-
+            print(batch)
+            print(feat)
+            
+            # // Continue here.... Need to fix the batching issue...
+            print(pred[feat][0])
+            print(batch[inpt.edge_index[0]])
             pred[feat] = [pred[feat][0].detach(), pred[feat][1].detach()]
             truth[feat] = [truth[feat][0], truth[feat][1]] 
+            
             self.ROC[feat]["truth"].append(truth[feat][0])
             self.ROC[feat]["pred"].append(pred[feat][0])
             self.ROC[feat]["pred_score"].append(pred[feat][1]) 
-            self.ROC[feat]["idx"].append(idx)
-            self.ROC[feat]["proc"].append(Data[idx].prc)
+
+            self.ROC[feat]["idx"] += idx
+            self.ROC[feat]["proc"] += [D.prc for D in Data]
         
         return pred
 
