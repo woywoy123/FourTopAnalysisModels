@@ -98,6 +98,8 @@ class Metrics:
         res = []
         if len(tru) == 0:
             return res
+        if len(pred) == 0:
+            return pred 
         p = pred.pop(0)
         max_tru, min_tru = max(tru), min(tru)
         col = True if p <= max_tru and p >= min_tru else False

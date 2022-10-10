@@ -37,7 +37,7 @@ class Common(Template, LogDumper):
 
         if len(self.Acc) == 0:
             self.Warning(Mode + " has no samples. Make the HDF5 sample larger. Skipping...")
-            return 
+            return self.Plots
         
         self.OutDir = Output + "/" + Mode + "/plots/"
         for i in self.Acc:

@@ -3,7 +3,7 @@ from AnalysisTopGNN.Generators import Optimizer
 from Tooling import Tools, Metrics
 import torch
 from torch_geometric.loader import DataLoader
-from torch_geometric.data import Batch
+from torch_geometric.data import Batch, Data
 
 class Epoch(Tools, Optimizer, Metrics):
 
@@ -23,7 +23,7 @@ class Epoch(Tools, Optimizer, Metrics):
         self.Device = None
         self.BatchSize = None
         
-        self.Debug = False
+        self.Debug = "Test"
         self.Stats = {}
         self.ROC = {}
         
@@ -35,11 +35,6 @@ class Epoch(Tools, Optimizer, Metrics):
 
         self.NodeParticleEfficiency = {}
         self.EdgeParticleEfficiency = {}
-
-    def LoadModel(self):
-        self.Model = torch.load(self.ModelBase)
-        state = torch.load(self.TorchSave)
-        self.Model.load_state_dict(state["state_dict"])
 
     def CollectMetric(self, name, key, feature, inpt):
         if name not in self.Stats:
@@ -59,46 +54,62 @@ class Epoch(Tools, Optimizer, Metrics):
       
         self.Stats["FoldTime"] = []
         self.Stats["KFolds"] = []
-        for k in range(len(self.TrainStats["kFold"])):
-            nodes = self.TrainStats["Nodes"][k]
-            self.Stats["FoldTime"] += self.TrainStats["FoldTime"][k]
-            self.Stats["KFolds"] += self.TrainStats["kFold"][k]
-            
+        for n_node in range(len(self.TrainStats["Nodes"])):
+            node = self.TrainStats["Nodes"][n_node]
+            self.Stats["FoldTime"] += self.TrainStats["FoldTime"][n_node]
+            self.Stats["KFolds"] += self.TrainStats["kFold"][n_node]
+           
+            kF = len(self.TrainStats["kFold"][n_node])
             for metric in Metrics:
                 for feat in self.TrainStats[metric]:
-                    inpt = self.TrainStats[metric][feat][nodes]
-                    self.CollectMetric("Node"+metric.replace("_", ""), self.TrainStats[metric][feat], str(nodes) + "/" + feat, inpt)
+                    inpt = self.TrainStats[metric][feat][n_node*kF:(n_node+1)*kF]
+                    self.CollectMetric("Node"+metric.replace("_", ""), self.TrainStats[metric][feat], str(node) + "/" + feat, inpt)
         del self.TrainStats
    
-    def PredictOutput(self, Data, idx):
+    def LoadModel(self):
+        model = torch.load(self.ModelBase)
+        state = torch.load(self.TorchSave)
+        model.load_state_dict(state["state_dict"])
+        self.Model = model
+        self.Model.eval()
 
-        data = [D.Data for D in Data]
-        inpt = next(iter(DataLoader(data, batch_size = self.BatchSize)))
-        batch = inpt.batch
+    def PredictOutput(self, DataInpt, idx):
+        data = [D.Data for D in DataInpt]
+        prc = [[D.prc] for D in DataInpt]
+        inpt = next(iter(DataLoader(data, batch_size = len(idx))))
         truth, pred = self.Train(inpt)
-        for feat in list(pred):
+
+        PredDataStruc = {}
+        PredDataStruc |= {feat : pred[feat][0].view(-1, 1) for feat in list(pred)}
+        PredDataStruc |= {feat + "_score" : pred[feat][1] for feat in list(pred)}
+        PredDataStruc["edge_index"] = inpt.edge_index
+        PredDataStruc["batch"] = inpt.batch.view(-1, 1)
+        pred = Data().from_dict(PredDataStruc)
+
+        TruthDataStruc = {feat : truth[feat][1] for feat in list(truth)}
+        TruthDataStruc["edge_index"] = inpt.edge_index
+        TruthDataStruc["batch"] = inpt.batch.view(-1, 1)
+        truth = Data().from_dict(TruthDataStruc)
+        
+        ModelOut = [i[2:] for i in self.ModelOutputs if i.startswith("O_")]
+        pred = [pred.subgraph(inpt.batch == b) for b in range(len(idx))]
+        truth = [truth.subgraph(inpt.batch == b) for b in range(len(idx))]
+        for feat in ModelOut:
             if feat not in self.ROC:
                 self.ROC[feat] = { "fpr" : [], "tpr" : [], "auc" : [], 
                                    "truth" : [], "pred" : [], "pred_score" : [], 
                                    "idx" : [], "proc" : []
-                                 }
-            print(batch)
-            print(feat)
-            
-            # // Continue here.... Need to fix the batching issue...
-            print(pred[feat][0])
-            print(batch[inpt.edge_index[0]])
-            pred[feat] = [pred[feat][0].detach(), pred[feat][1].detach()]
-            truth[feat] = [truth[feat][0], truth[feat][1]] 
-            
-            self.ROC[feat]["truth"].append(truth[feat][0])
-            self.ROC[feat]["pred"].append(pred[feat][0])
-            self.ROC[feat]["pred_score"].append(pred[feat][1]) 
+                                 } 
 
-            self.ROC[feat]["idx"] += idx
-            self.ROC[feat]["proc"] += [D.prc for D in Data]
+            for b in range(len(idx)):
+                self.ROC[feat]["truth"].append(truth[b][feat].view(-1))
+                self.ROC[feat]["pred"].append(pred[b][feat].view(-1))
+                self.ROC[feat]["pred_score"].append(pred[b][feat + "_score"]) 
+
+                self.ROC[feat]["idx"] += [idx[b]]
+                self.ROC[feat]["proc"] += prc[b]
         
-        return pred
+        return pred, ModelOut
 
     def Flush(self):
         self.Stats = {}
@@ -109,10 +120,7 @@ class Epoch(Tools, Optimizer, Metrics):
         self.TruthEdgeFeatureMass = {}
         self.NodeParticleEfficiency = {}
         self.EdgeParticleEfficiency = {}
-        del self.Model
-        self.Model = None
-        if self.Debug:
-            self.MakeContainer(self.Debug)
+        self.MakeContainer(self.Debug)
 
     def ParticleYield(self, Edge):
         dic_p = self.EdgeFeatureMass if Edge else self.NodeFeatureMass
@@ -124,7 +132,6 @@ class Epoch(Tools, Optimizer, Metrics):
             if f not in dic_o:
                 dic_o[f] = {}
             dic_o[f][idx] = self.ParticleEfficiency(dic_p[f][idx], dic_t[f][idx], prc)
-
     
     def DumpEpoch(self, ModeType, OutputDir):
         def ParticleDumping(Pred_Mass, Truth_Mass, Effic, Key):

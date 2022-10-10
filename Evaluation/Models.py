@@ -41,7 +41,7 @@ class ModelContainer(Tools, Reconstructor):
         
         self.ModelSaves["Base"] = Files.pop(Files.index([i for i in Files if "_Model.pt" in i][0]))
         self.Epochs |= { int(ep.split("_")[1]) : None for ep in Files}
-        self.ModelSaves["TorchSave"] |= { ep.split("_")[1] : self.Dir + "/TorchSave/" + ep for ep in Files} 
+        self.ModelSaves["TorchSave"] |= { ep.split("_")[1] : self.Dir + "/PickleSave/" + ep for ep in Files} 
 
         Files = self.ListFilesInDir(self.Dir + "/TorchScript")
         self.ModelSaves["TorchScript"] |= { ep.split("_")[1] : self.Dir + "/TorchScript/" + ep for ep in Files} 
@@ -109,6 +109,7 @@ class ModelContainer(Tools, Reconstructor):
         switch = True if sample == "test" else False
         switch = False if sample == "train" else switch
         switch = None if sample == "all" else switch
+
         self.TruthMode = True
         self.EdgeFeatureMass = {}
         self.NodeFeatureMass = {}
@@ -121,8 +122,6 @@ class ModelContainer(Tools, Reconstructor):
             self.RebuildParticles(self.NodeFeatures, False, idx)
         
         for ep in self.Epochs:
-
-            self.Epochs[ep].Debug = "Test"
             self.Epochs[ep].Flush()
             
             self.Epochs[ep].TruthEdgeFeatureMass |= self.EdgeFeatureMass
@@ -140,14 +139,13 @@ class ModelContainer(Tools, Reconstructor):
             self.Epochs[ep].LoadModel()
             
             for data, idx in zip(DataBatch, DataIdx):
-                print(idx, data)
-                #self.Sample = Data[idx].Data
-                self._Results = self.Epochs[ep].PredictOutput(data, idx)
-                self._Results = { "O_" + i : self._Results[i][0] for i in self._Results}
+                pred, modelOuts = self.Epochs[ep].PredictOutput(data, idx)
                 
-                exit()
-                self.RebuildParticles(self.EdgeFeatures, True, idx)
-                self.RebuildParticles(self.NodeFeatures, False, idx)
+                for b in range(len(idx)):
+                    self.Sample = data[b].Data
+                    self._Results = { "O_" + i : pred[b][i] for i in modelOuts}
+                    self.RebuildParticles(self.EdgeFeatures, True, idx[b])
+                    self.RebuildParticles(self.NodeFeatures, False, idx[b])
                 
             self.Epochs[ep].NodeFeatureMass |= self.NodeFeatureMass
             self.Epochs[ep].EdgeFeatureMass |= self.EdgeFeatureMass

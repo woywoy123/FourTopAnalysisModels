@@ -14,6 +14,8 @@ class FigureContainer:
         self.train = Train()
         self.TrainingPlots = {}
         self.AllPlots = {}
+        self.TestPlots = {}
+        self.TrainPlots = {}
 
     def AddEpoch(self, epoch, vals):
         if "training" in vals:
@@ -26,24 +28,32 @@ class FigureContainer:
             self.test.AddEpoch(epoch, vals["test"])
 
     def Compile(self):
+        def Convert(inpt):
+            for i in inpt:
+                if isinstance(inpt[i], dict):
+                    for j in inpt[i]:
+                        inpt[i][j] = inpt[i][j].DumpDict()
+                    continue
+                if inpt[i] == None:
+                    continue
+                inpt[i] = inpt[i].DumpDict()
+
         self.TrainingPlots |= self.training.Compile(self.OutputDirectory)
         self.AllPlots |= self.all.Compile(self.OutputDirectory, "all")
-        #self.test.Compile(self.OutputDirectory, "test")
-        #self.train.Compile(self.OutputDirectory, "train")
-        
-        for i in self.TrainingPlots:
-            self.TrainingPlots[i] = self.TrainingPlots[i].DumpDict()
-        
-        for i in self.AllPlots:
-            if isinstance(self.AllPlots[i], dict):
-                for j in self.AllPlots[i]:
-                    self.AllPlots[i][j] = self.AllPlots[i][j].DumpDict()
-                continue
-            self.AllPlots[i] = self.AllPlots[i].DumpDict()
+        self.TestPlots |= self.test.Compile(self.OutputDirectory, "test")
+        self.TrainPlots |= self.train.Compile(self.OutputDirectory, "train")
+       
+        Convert(self.TrainingPlots)
+        Convert(self.AllPlots) 
+        Convert(self.TestPlots)
+        Convert(self.TrainPlots)
 
-
-        dumped = {"TrainingPlots" : self.TrainingPlots, 
-                "AllPlots" : self.AllPlots}
+        dumped = {
+                    "TrainingPlots" : self.TrainingPlots, 
+                    "AllPlots" : self.AllPlots, 
+                    "TestPlots" : self.TestPlots,
+                    "TrainPlots" : self.TrainPlots
+                  }
         return dumped
 
     def Rebuild(self, Dict):
@@ -102,15 +112,6 @@ class FigureContainer:
         self._Out = Rebuild(self._ID)
         Assign(self._ID)
         Place(self.TrainingPlots)
-
-
-
-
-
-
-
-
-
 
 
 class ModelComparison(Template, LogDumper):

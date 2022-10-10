@@ -78,7 +78,6 @@ class SampleContainer(Tools, EventGenerator):
             dch = self.ReverseHash[smpl.hash]
             smpl.src = self.DataCache + "/" + dch + "/" + "/".join(sub)
             smpl.dst = self.HDF5
-            smpl.train = False
             
             self.SampleMap[indx] = smpl
 

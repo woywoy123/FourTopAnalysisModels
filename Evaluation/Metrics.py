@@ -81,7 +81,7 @@ class ModelEvaluator(Tools, Notification):
             DataContainer.Device = self.Device
             DataContainer.random = self.BuildDataRandom
             DataContainer.Size = self.BuildDataPercentage
-            DataContainer.DataCache = self._rootDir + "/DataCache"
+            DataContainer.DataCache = self.abs(self._rootDir + "/DataCache")
             DataContainer.FileTrace = self._rootDir + "/FileTraces/FileTraces.pkl"
             DataContainer.TrainingSample = self._rootDir + "/FileTraces/TrainingSample.pkl"
             DataContainer.HDF5 = self.abs(OutputDirectory + "/HDF5")
