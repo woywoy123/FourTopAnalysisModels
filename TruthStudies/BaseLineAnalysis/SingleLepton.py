@@ -11,23 +11,38 @@ class Container(object):
         self.ResidualTop = []
         self.Top1 = []
         self.Top2 = []
+        self.Zprime = []
+        self.SampleIndex = {}
+        self.SampleLumi = {}
     
-    def Add(self, t1, t2, t3, t4):
+    def Add(self, t1, t2, t3, t4, Zp, idx):
         l = t1 + t2 + t3 + t4
         if len(l) == 0:
             return
+
         self.LeptonicTop += t1
         self.ResidualTop += t4
         self.Top1 += t2
         self.Top2 += t3
+        self.Zprime += Zp
+        self.SampleIndex[idx] = Zp
 
     def MakeAllMass(self):
         self.lepT = [t.CalculateMass() for t in self.LeptonicTop]
         self.resT = [t.CalculateMass() for t in self.ResidualTop]
         self.t1T = [t.CalculateMass() for t in self.Top1]
         self.t2T = [t.CalculateMass() for t in self.Top2]
-        self.Zprime = [(i+j).CalculateMass() for i, j in zip(self.Top1, self.Top2)]
-    
+        self.Zprime = [t.CalculateMass() for t in self.Zprime if isinstance(t, int) == False]
+        
+        self.SampleIndex = { idx : self.SampleIndex[idx][0].CalculateMass() for idx in self.SampleIndex if self.SampleIndex[idx] != [] if isinstance(self.SampleIndex[idx][0], int) == False}
+
+    def CalculateLumi(self, LumiCon):
+        Lum = LumiCon.SampleLumi
+        lumi = sum([Lum[l] for l in self.SampleIndex])
+        self.Lumi = lumi
+        self.CrossSec = len(self.Zprime) / (lumi + 1)
+
+
     def __radd__(self, other):
         if other == 0:
             return self
@@ -49,6 +64,7 @@ class Container(object):
 
 
 
+
 def SingleLeptonAnalysis(Containers, ev):
    
     event = ev.Trees["nominal"]
@@ -61,6 +77,17 @@ def SingleLeptonAnalysis(Containers, ev):
         else:
             lep.append(p)
     
+    Truth = [i for t in event.TopPostFSR for j in t.Jets for i in j.Children if t.FromRes == 1]
+    tmp = []
+    for t in Truth:
+        if t not in tmp:
+            tmp.append(t)
+    Containers["Truth"].Zprime.append(sum(tmp))
+    Containers["Truth"].SampleIndex[ev.EventIndex] = [sum(tmp)]
+    Containers["Truth"].SampleLumi[ev.EventIndex] = event.weightmc
+
+
+
     # Find the lepton's closest jets but b-tagged at different eff points 
     # lep + jet @ 85, 77, 70, 60, 0
     jet85_lep = []
@@ -279,132 +306,136 @@ def SingleLeptonAnalysis(Containers, ev):
     # ===== Now calculate the top masses for each region ====== #
     # leptonic spec - resonance tops - residual spec
     def ReturnMass(lepT, T1, T2, resid):
-        lt, t1, t2, res = sum(lepT), sum(T1), sum(T2), sum(resid)
+        lt, t1, t2, res, Zp = sum(lepT), sum(T1), sum(T2), sum(resid), sum([t for t in T1 if t not in T2])
         
         lt = [lt] if isinstance(lt, int) == False else []
         t1 = [t1] if isinstance(t1, int) == False else []
         t2 = [t2] if isinstance(t2, int) == False else []
         res = [res] if isinstance(res, int) == False else []
-        return lt, t1, t2, res 
+        zp = [Zp] if isinstance(Zp, int) == False else []
+
+        return lt, t1, t2, res, zp
     
     
     # @ 85
     # Non inclusive leptonic 
-    top_lep_85_85, top_j1_85_85, top_j2_85_85, top_rej_85_85 = ReturnMass(jet85_lep, j1_85_at_njl85, j2_85_at_njl85, rej_85_at_njl85)
-    top_lep_85_77, top_j1_85_77, top_j2_85_77, top_rej_85_77 = ReturnMass(jet77_lep, j1_85_at_njl77, j2_85_at_njl77, rej_85_at_njl77)
-    top_lep_85_70, top_j1_85_70, top_j2_85_70, top_rej_85_70 = ReturnMass(jet70_lep, j1_85_at_njl70, j2_85_at_njl70, rej_85_at_njl70)
-    top_lep_85_60, top_j1_85_60, top_j2_85_60, top_rej_85_60 = ReturnMass(jet60_lep, j1_85_at_njl60, j2_85_at_njl60, rej_85_at_njl60)
-    top_lep_85_0 , top_j1_85_0 , top_j2_85_0 , top_rej_85_0  = ReturnMass(jet0_lep , j1_85_at_njl0 , j2_85_at_njl0 , rej_85_at_njl0 )
+    top_lep_85_85, top_j1_85_85, top_j2_85_85, top_rej_85_85, Zprime_85_85 = ReturnMass(jet85_lep, j1_85_at_njl85, j2_85_at_njl85, rej_85_at_njl85)
+    top_lep_85_77, top_j1_85_77, top_j2_85_77, top_rej_85_77, Zprime_85_77 = ReturnMass(jet77_lep, j1_85_at_njl77, j2_85_at_njl77, rej_85_at_njl77)
+    top_lep_85_70, top_j1_85_70, top_j2_85_70, top_rej_85_70, Zprime_85_70 = ReturnMass(jet70_lep, j1_85_at_njl70, j2_85_at_njl70, rej_85_at_njl70)
+    top_lep_85_60, top_j1_85_60, top_j2_85_60, top_rej_85_60, Zprime_85_60 = ReturnMass(jet60_lep, j1_85_at_njl60, j2_85_at_njl60, rej_85_at_njl60)
+    top_lep_85_0 , top_j1_85_0 , top_j2_85_0 , top_rej_85_0 , Zprime_85_0  = ReturnMass(jet0_lep , j1_85_at_njl0 , j2_85_at_njl0 , rej_85_at_njl0 )
     
     # Inclusive leptonic 
-    i_top_lep_85_85, i_top_j1_85_85, i_top_j2_85_85, i_top_rej_85_85 = ReturnMass(jet85_lep, j1_85_at_jl85, j2_85_at_jl85, rej_85_at_jl85)
-    i_top_lep_85_77, i_top_j1_85_77, i_top_j2_85_77, i_top_rej_85_77 = ReturnMass(jet77_lep, j1_85_at_jl77, j2_85_at_jl77, rej_85_at_jl77)
-    i_top_lep_85_70, i_top_j1_85_70, i_top_j2_85_70, i_top_rej_85_70 = ReturnMass(jet70_lep, j1_85_at_jl70, j2_85_at_jl70, rej_85_at_jl70)
-    i_top_lep_85_60, i_top_j1_85_60, i_top_j2_85_60, i_top_rej_85_60 = ReturnMass(jet60_lep, j1_85_at_jl60, j2_85_at_jl60, rej_85_at_jl60)
-    i_top_lep_85_0 , i_top_j1_85_0 , i_top_j2_85_0 , i_top_rej_85_0  = ReturnMass(jet0_lep , j1_85_at_jl0 , j2_85_at_jl0 , rej_85_at_jl0 )
+    i_top_lep_85_85, i_top_j1_85_85, i_top_j2_85_85, i_top_rej_85_85, i_Zprime_85_85  = ReturnMass(jet85_lep, j1_85_at_jl85, j2_85_at_jl85, rej_85_at_jl85)
+    i_top_lep_85_77, i_top_j1_85_77, i_top_j2_85_77, i_top_rej_85_77, i_Zprime_85_77  = ReturnMass(jet77_lep, j1_85_at_jl77, j2_85_at_jl77, rej_85_at_jl77)
+    i_top_lep_85_70, i_top_j1_85_70, i_top_j2_85_70, i_top_rej_85_70, i_Zprime_85_70  = ReturnMass(jet70_lep, j1_85_at_jl70, j2_85_at_jl70, rej_85_at_jl70)
+    i_top_lep_85_60, i_top_j1_85_60, i_top_j2_85_60, i_top_rej_85_60, i_Zprime_85_60  = ReturnMass(jet60_lep, j1_85_at_jl60, j2_85_at_jl60, rej_85_at_jl60)
+    i_top_lep_85_0 , i_top_j1_85_0 , i_top_j2_85_0 , i_top_rej_85_0 , i_Zprime_85_0   = ReturnMass(jet0_lep , j1_85_at_jl0 , j2_85_at_jl0 , rej_85_at_jl0 )
     
     
     # @ 77
     # Non inclusive leptonic 
-    top_lep_77_85, top_j1_77_85, top_j2_77_85, top_rej_77_85 = ReturnMass(jet85_lep, j1_77_at_njl85, j2_77_at_njl85, rej_77_at_njl85)
-    top_lep_77_77, top_j1_77_77, top_j2_77_77, top_rej_77_77 = ReturnMass(jet77_lep, j1_77_at_njl77, j2_77_at_njl77, rej_77_at_njl77)
-    top_lep_77_70, top_j1_77_70, top_j2_77_70, top_rej_77_70 = ReturnMass(jet70_lep, j1_77_at_njl70, j2_77_at_njl70, rej_77_at_njl70)
-    top_lep_77_60, top_j1_77_60, top_j2_77_60, top_rej_77_60 = ReturnMass(jet60_lep, j1_77_at_njl60, j2_77_at_njl60, rej_77_at_njl60)
-    top_lep_77_0 , top_j1_77_0 , top_j2_77_0 , top_rej_77_0  = ReturnMass(jet0_lep , j1_77_at_njl0 , j2_77_at_njl0 , rej_77_at_njl0 )
+    top_lep_77_85, top_j1_77_85, top_j2_77_85, top_rej_77_85, Zprime_77_85  = ReturnMass(jet85_lep, j1_77_at_njl85, j2_77_at_njl85, rej_77_at_njl85)
+    top_lep_77_77, top_j1_77_77, top_j2_77_77, top_rej_77_77, Zprime_77_77  = ReturnMass(jet77_lep, j1_77_at_njl77, j2_77_at_njl77, rej_77_at_njl77)
+    top_lep_77_70, top_j1_77_70, top_j2_77_70, top_rej_77_70, Zprime_77_70  = ReturnMass(jet70_lep, j1_77_at_njl70, j2_77_at_njl70, rej_77_at_njl70)
+    top_lep_77_60, top_j1_77_60, top_j2_77_60, top_rej_77_60, Zprime_77_60  = ReturnMass(jet60_lep, j1_77_at_njl60, j2_77_at_njl60, rej_77_at_njl60)
+    top_lep_77_0 , top_j1_77_0 , top_j2_77_0 , top_rej_77_0 , Zprime_77_0   = ReturnMass(jet0_lep , j1_77_at_njl0 , j2_77_at_njl0 , rej_77_at_njl0 )
     
     # Inclusive leptonic 
-    i_top_lep_77_85, i_top_j1_77_85, i_top_j2_77_85, i_top_rej_77_85 = ReturnMass(jet85_lep, j1_77_at_jl85, j2_77_at_jl85, rej_77_at_jl85)
-    i_top_lep_77_77, i_top_j1_77_77, i_top_j2_77_77, i_top_rej_77_77 = ReturnMass(jet77_lep, j1_77_at_jl77, j2_77_at_jl77, rej_77_at_jl77)
-    i_top_lep_77_70, i_top_j1_77_70, i_top_j2_77_70, i_top_rej_77_70 = ReturnMass(jet70_lep, j1_77_at_jl70, j2_77_at_jl70, rej_77_at_jl70)
-    i_top_lep_77_60, i_top_j1_77_60, i_top_j2_77_60, i_top_rej_77_60 = ReturnMass(jet60_lep, j1_77_at_jl60, j2_77_at_jl60, rej_77_at_jl60)
-    i_top_lep_77_0 , i_top_j1_77_0 , i_top_j2_77_0 , i_top_rej_77_0  = ReturnMass(jet0_lep , j1_77_at_jl0 , j2_77_at_jl0 , rej_77_at_jl0 )
+    i_top_lep_77_85, i_top_j1_77_85, i_top_j2_77_85, i_top_rej_77_85, i_Zprime_77_85  = ReturnMass(jet85_lep, j1_77_at_jl85, j2_77_at_jl85, rej_77_at_jl85)
+    i_top_lep_77_77, i_top_j1_77_77, i_top_j2_77_77, i_top_rej_77_77, i_Zprime_77_77  = ReturnMass(jet77_lep, j1_77_at_jl77, j2_77_at_jl77, rej_77_at_jl77)
+    i_top_lep_77_70, i_top_j1_77_70, i_top_j2_77_70, i_top_rej_77_70, i_Zprime_77_70  = ReturnMass(jet70_lep, j1_77_at_jl70, j2_77_at_jl70, rej_77_at_jl70)
+    i_top_lep_77_60, i_top_j1_77_60, i_top_j2_77_60, i_top_rej_77_60, i_Zprime_77_60  = ReturnMass(jet60_lep, j1_77_at_jl60, j2_77_at_jl60, rej_77_at_jl60)
+    i_top_lep_77_0 , i_top_j1_77_0 , i_top_j2_77_0 , i_top_rej_77_0 , i_Zprime_77_0   = ReturnMass(jet0_lep , j1_77_at_jl0 , j2_77_at_jl0 , rej_77_at_jl0 )
     
     
     # @ 70
     # Non inclusive leptonic 
-    top_lep_70_85, top_j1_70_85, top_j2_70_85, top_rej_70_85 = ReturnMass(jet85_lep, j1_70_at_njl85, j2_70_at_njl85, rej_70_at_njl85)
-    top_lep_70_77, top_j1_70_77, top_j2_70_77, top_rej_70_77 = ReturnMass(jet77_lep, j1_70_at_njl77, j2_70_at_njl77, rej_70_at_njl77)
-    top_lep_70_70, top_j1_70_70, top_j2_70_70, top_rej_70_70 = ReturnMass(jet70_lep, j1_70_at_njl70, j2_70_at_njl70, rej_70_at_njl70)
-    top_lep_70_60, top_j1_70_60, top_j2_70_60, top_rej_70_60 = ReturnMass(jet60_lep, j1_70_at_njl60, j2_70_at_njl60, rej_70_at_njl60)
-    top_lep_70_0 , top_j1_70_0 , top_j2_70_0 , top_rej_70_0  = ReturnMass(jet0_lep , j1_70_at_njl0 , j2_70_at_njl0 , rej_70_at_njl0 )
+    top_lep_70_85, top_j1_70_85, top_j2_70_85, top_rej_70_85, Zprime_70_85  = ReturnMass(jet85_lep, j1_70_at_njl85, j2_70_at_njl85, rej_70_at_njl85)
+    top_lep_70_77, top_j1_70_77, top_j2_70_77, top_rej_70_77, Zprime_70_77  = ReturnMass(jet77_lep, j1_70_at_njl77, j2_70_at_njl77, rej_70_at_njl77)
+    top_lep_70_70, top_j1_70_70, top_j2_70_70, top_rej_70_70, Zprime_70_70  = ReturnMass(jet70_lep, j1_70_at_njl70, j2_70_at_njl70, rej_70_at_njl70)
+    top_lep_70_60, top_j1_70_60, top_j2_70_60, top_rej_70_60, Zprime_70_60  = ReturnMass(jet60_lep, j1_70_at_njl60, j2_70_at_njl60, rej_70_at_njl60)
+    top_lep_70_0 , top_j1_70_0 , top_j2_70_0 , top_rej_70_0 , Zprime_70_0   = ReturnMass(jet0_lep , j1_70_at_njl0 , j2_70_at_njl0 , rej_70_at_njl0 )
     
     # Inclusive leptonic 
-    i_top_lep_70_85, i_top_j1_70_85, i_top_j2_70_85, i_top_rej_70_85 = ReturnMass(jet85_lep, j1_70_at_jl85, j2_70_at_jl85, rej_70_at_jl85)
-    i_top_lep_70_77, i_top_j1_70_77, i_top_j2_70_77, i_top_rej_70_77 = ReturnMass(jet77_lep, j1_70_at_jl77, j2_70_at_jl77, rej_70_at_jl77)
-    i_top_lep_70_70, i_top_j1_70_70, i_top_j2_70_70, i_top_rej_70_70 = ReturnMass(jet70_lep, j1_70_at_jl70, j2_70_at_jl70, rej_70_at_jl70)
-    i_top_lep_70_60, i_top_j1_70_60, i_top_j2_70_60, i_top_rej_70_60 = ReturnMass(jet60_lep, j1_70_at_jl60, j2_70_at_jl60, rej_70_at_jl60)
-    i_top_lep_70_0 , i_top_j1_70_0 , i_top_j2_70_0 , i_top_rej_70_0  = ReturnMass(jet0_lep , j1_70_at_jl0 , j2_70_at_jl0 , rej_70_at_jl0 )
+    i_top_lep_70_85, i_top_j1_70_85, i_top_j2_70_85, i_top_rej_70_85, i_Zprime_70_85  = ReturnMass(jet85_lep, j1_70_at_jl85, j2_70_at_jl85, rej_70_at_jl85)
+    i_top_lep_70_77, i_top_j1_70_77, i_top_j2_70_77, i_top_rej_70_77, i_Zprime_70_77  = ReturnMass(jet77_lep, j1_70_at_jl77, j2_70_at_jl77, rej_70_at_jl77)
+    i_top_lep_70_70, i_top_j1_70_70, i_top_j2_70_70, i_top_rej_70_70, i_Zprime_70_70  = ReturnMass(jet70_lep, j1_70_at_jl70, j2_70_at_jl70, rej_70_at_jl70)
+    i_top_lep_70_60, i_top_j1_70_60, i_top_j2_70_60, i_top_rej_70_60, i_Zprime_70_60  = ReturnMass(jet60_lep, j1_70_at_jl60, j2_70_at_jl60, rej_70_at_jl60)
+    i_top_lep_70_0 , i_top_j1_70_0 , i_top_j2_70_0 , i_top_rej_70_0 , i_Zprime_70_0   = ReturnMass(jet0_lep , j1_70_at_jl0 , j2_70_at_jl0 , rej_70_at_jl0 )
     
     
     # @ 60
     # Non inclusive leptonic 
-    top_lep_60_85, top_j1_60_85, top_j2_60_85, top_rej_60_85 = ReturnMass(jet85_lep, j1_60_at_njl85, j2_60_at_njl85, rej_60_at_njl85)
-    top_lep_60_77, top_j1_60_77, top_j2_60_77, top_rej_60_77 = ReturnMass(jet77_lep, j1_60_at_njl77, j2_60_at_njl77, rej_60_at_njl77)
-    top_lep_60_70, top_j1_60_70, top_j2_60_70, top_rej_60_70 = ReturnMass(jet70_lep, j1_60_at_njl70, j2_60_at_njl70, rej_60_at_njl70)
-    top_lep_60_60, top_j1_60_60, top_j2_60_60, top_rej_60_60 = ReturnMass(jet60_lep, j1_60_at_njl60, j2_60_at_njl60, rej_60_at_njl60)
-    top_lep_60_0 , top_j1_60_0 , top_j2_60_0 , top_rej_60_0  = ReturnMass(jet0_lep , j1_60_at_njl0 , j2_60_at_njl0 , rej_60_at_njl0 )
+    top_lep_60_85, top_j1_60_85, top_j2_60_85, top_rej_60_85, Zprime_60_85  = ReturnMass(jet85_lep, j1_60_at_njl85, j2_60_at_njl85, rej_60_at_njl85)
+    top_lep_60_77, top_j1_60_77, top_j2_60_77, top_rej_60_77, Zprime_60_77  = ReturnMass(jet77_lep, j1_60_at_njl77, j2_60_at_njl77, rej_60_at_njl77)
+    top_lep_60_70, top_j1_60_70, top_j2_60_70, top_rej_60_70, Zprime_60_70  = ReturnMass(jet70_lep, j1_60_at_njl70, j2_60_at_njl70, rej_60_at_njl70)
+    top_lep_60_60, top_j1_60_60, top_j2_60_60, top_rej_60_60, Zprime_60_60  = ReturnMass(jet60_lep, j1_60_at_njl60, j2_60_at_njl60, rej_60_at_njl60)
+    top_lep_60_0 , top_j1_60_0 , top_j2_60_0 , top_rej_60_0 , Zprime_60_0   = ReturnMass(jet0_lep , j1_60_at_njl0 , j2_60_at_njl0 , rej_60_at_njl0 )
     
     # Inclusive leptonic 
-    i_top_lep_60_85, i_top_j1_60_85, i_top_j2_60_85, i_top_rej_60_85 = ReturnMass(jet85_lep, j1_60_at_jl85, j2_60_at_jl85, rej_60_at_jl85)
-    i_top_lep_60_77, i_top_j1_60_77, i_top_j2_60_77, i_top_rej_60_77 = ReturnMass(jet77_lep, j1_60_at_jl77, j2_60_at_jl77, rej_60_at_jl77)
-    i_top_lep_60_70, i_top_j1_60_70, i_top_j2_60_70, i_top_rej_60_70 = ReturnMass(jet70_lep, j1_60_at_jl70, j2_60_at_jl70, rej_60_at_jl70)
-    i_top_lep_60_60, i_top_j1_60_60, i_top_j2_60_60, i_top_rej_60_60 = ReturnMass(jet60_lep, j1_60_at_jl60, j2_60_at_jl60, rej_60_at_jl60)
-    i_top_lep_60_0 , i_top_j1_60_0 , i_top_j2_60_0 , i_top_rej_60_0  = ReturnMass(jet0_lep , j1_60_at_jl0 , j2_60_at_jl0 , rej_60_at_jl0 )
+    i_top_lep_60_85, i_top_j1_60_85, i_top_j2_60_85, i_top_rej_60_85, i_Zprime_60_85  = ReturnMass(jet85_lep, j1_60_at_jl85, j2_60_at_jl85, rej_60_at_jl85)
+    i_top_lep_60_77, i_top_j1_60_77, i_top_j2_60_77, i_top_rej_60_77, i_Zprime_60_77  = ReturnMass(jet77_lep, j1_60_at_jl77, j2_60_at_jl77, rej_60_at_jl77)
+    i_top_lep_60_70, i_top_j1_60_70, i_top_j2_60_70, i_top_rej_60_70, i_Zprime_60_70  = ReturnMass(jet70_lep, j1_60_at_jl70, j2_60_at_jl70, rej_60_at_jl70)
+    i_top_lep_60_60, i_top_j1_60_60, i_top_j2_60_60, i_top_rej_60_60, i_Zprime_60_60  = ReturnMass(jet60_lep, j1_60_at_jl60, j2_60_at_jl60, rej_60_at_jl60)
+    i_top_lep_60_0 , i_top_j1_60_0 , i_top_j2_60_0 , i_top_rej_60_0 , i_Zprime_60_0   = ReturnMass(jet0_lep , j1_60_at_jl0 , j2_60_at_jl0 , rej_60_at_jl0 )
 
     
 
-    Containers["top_85_85"].Add(top_lep_85_85, top_j1_85_85, top_j2_85_85, top_rej_85_85)
-    Containers["top_85_77"].Add(top_lep_85_77, top_j1_85_77, top_j2_85_77, top_rej_85_77)
-    Containers["top_85_70"].Add(top_lep_85_70, top_j1_85_70, top_j2_85_70, top_rej_85_70)
-    Containers["top_85_60"].Add(top_lep_85_60, top_j1_85_60, top_j2_85_60, top_rej_85_60)
-    Containers["top_85_0" ].Add(top_lep_85_0 , top_j1_85_0 , top_j2_85_0 , top_rej_85_0 )
-    
-    Containers["top_77_85"].Add(top_lep_77_85, top_j1_77_85, top_j2_77_85, top_rej_77_85)
-    Containers["top_77_77"].Add(top_lep_77_77, top_j1_77_77, top_j2_77_77, top_rej_77_77)
-    Containers["top_77_70"].Add(top_lep_77_70, top_j1_77_70, top_j2_77_70, top_rej_77_70)
-    Containers["top_77_60"].Add(top_lep_77_60, top_j1_77_60, top_j2_77_60, top_rej_77_60)
-    Containers["top_77_0" ].Add(top_lep_77_0 , top_j1_77_0 , top_j2_77_0 , top_rej_77_0 )
-    
-    Containers["top_70_85"].Add(top_lep_70_85, top_j1_70_85, top_j2_70_85, top_rej_70_85)
-    Containers["top_70_77"].Add(top_lep_70_77, top_j1_70_77, top_j2_70_77, top_rej_70_77)
-    Containers["top_70_70"].Add(top_lep_70_70, top_j1_70_70, top_j2_70_70, top_rej_70_70)
-    Containers["top_70_60"].Add(top_lep_70_60, top_j1_70_60, top_j2_70_60, top_rej_70_60)
-    Containers["top_70_0" ].Add(top_lep_70_0 , top_j1_70_0 , top_j2_70_0 , top_rej_70_0 )
-    
-    Containers["top_60_85"].Add(top_lep_60_85, top_j1_60_85, top_j2_60_85, top_rej_60_85)
-    Containers["top_60_77"].Add(top_lep_60_77, top_j1_60_77, top_j2_60_77, top_rej_60_77)
-    Containers["top_60_70"].Add(top_lep_60_70, top_j1_60_70, top_j2_60_70, top_rej_60_70)
-    Containers["top_60_60"].Add(top_lep_60_60, top_j1_60_60, top_j2_60_60, top_rej_60_60)
-    Containers["top_60_0" ].Add(top_lep_60_0 , top_j1_60_0 , top_j2_60_0 , top_rej_60_0 )
+    Containers["top_85_85"].Add(top_lep_85_85, top_j1_85_85, top_j2_85_85, top_rej_85_85, Zprime_85_85, ev.EventIndex)
+    Containers["top_85_77"].Add(top_lep_85_77, top_j1_85_77, top_j2_85_77, top_rej_85_77, Zprime_85_77, ev.EventIndex)
+    Containers["top_85_70"].Add(top_lep_85_70, top_j1_85_70, top_j2_85_70, top_rej_85_70, Zprime_85_70, ev.EventIndex)
+    Containers["top_85_60"].Add(top_lep_85_60, top_j1_85_60, top_j2_85_60, top_rej_85_60, Zprime_85_60, ev.EventIndex)
+    Containers["top_85_0" ].Add(top_lep_85_0 , top_j1_85_0 , top_j2_85_0 , top_rej_85_0 , Zprime_85_0 , ev.EventIndex)
+                                                                                            
+    Containers["top_77_85"].Add(top_lep_77_85, top_j1_77_85, top_j2_77_85, top_rej_77_85, Zprime_77_85, ev.EventIndex)
+    Containers["top_77_77"].Add(top_lep_77_77, top_j1_77_77, top_j2_77_77, top_rej_77_77, Zprime_77_77, ev.EventIndex)
+    Containers["top_77_70"].Add(top_lep_77_70, top_j1_77_70, top_j2_77_70, top_rej_77_70, Zprime_77_70, ev.EventIndex)
+    Containers["top_77_60"].Add(top_lep_77_60, top_j1_77_60, top_j2_77_60, top_rej_77_60, Zprime_77_60, ev.EventIndex)
+    Containers["top_77_0" ].Add(top_lep_77_0 , top_j1_77_0 , top_j2_77_0 , top_rej_77_0 , Zprime_77_0 , ev.EventIndex)
+                                                                                            
+    Containers["top_70_85"].Add(top_lep_70_85, top_j1_70_85, top_j2_70_85, top_rej_70_85, Zprime_70_85, ev.EventIndex)
+    Containers["top_70_77"].Add(top_lep_70_77, top_j1_70_77, top_j2_70_77, top_rej_70_77, Zprime_70_77, ev.EventIndex)
+    Containers["top_70_70"].Add(top_lep_70_70, top_j1_70_70, top_j2_70_70, top_rej_70_70, Zprime_70_70, ev.EventIndex)
+    Containers["top_70_60"].Add(top_lep_70_60, top_j1_70_60, top_j2_70_60, top_rej_70_60, Zprime_70_60, ev.EventIndex)
+    Containers["top_70_0" ].Add(top_lep_70_0 , top_j1_70_0 , top_j2_70_0 , top_rej_70_0 , Zprime_70_0 , ev.EventIndex)
+                                                                                          
+    Containers["top_60_85"].Add(top_lep_60_85, top_j1_60_85, top_j2_60_85, top_rej_60_85, Zprime_60_85, ev.EventIndex)
+    Containers["top_60_77"].Add(top_lep_60_77, top_j1_60_77, top_j2_60_77, top_rej_60_77, Zprime_60_77, ev.EventIndex)
+    Containers["top_60_70"].Add(top_lep_60_70, top_j1_60_70, top_j2_60_70, top_rej_60_70, Zprime_60_70, ev.EventIndex)
+    Containers["top_60_60"].Add(top_lep_60_60, top_j1_60_60, top_j2_60_60, top_rej_60_60, Zprime_60_60, ev.EventIndex)
+    Containers["top_60_0" ].Add(top_lep_60_0 , top_j1_60_0 , top_j2_60_0 , top_rej_60_0 , Zprime_60_0 , ev.EventIndex)
 
-    Containers["inc_top_85_85"].Add(i_top_lep_85_85, i_top_j1_85_85, i_top_j2_85_85, i_top_rej_85_85)
-    Containers["inc_top_85_77"].Add(i_top_lep_85_77, i_top_j1_85_77, i_top_j2_85_77, i_top_rej_85_77)
-    Containers["inc_top_85_70"].Add(i_top_lep_85_70, i_top_j1_85_70, i_top_j2_85_70, i_top_rej_85_70)
-    Containers["inc_top_85_60"].Add(i_top_lep_85_60, i_top_j1_85_60, i_top_j2_85_60, i_top_rej_85_60)
-    Containers["inc_top_85_0" ].Add(i_top_lep_85_0 , i_top_j1_85_0 , i_top_j2_85_0 , i_top_rej_85_0 )
-    
-    Containers["inc_top_77_85"].Add(i_top_lep_77_85, i_top_j1_77_85, i_top_j2_77_85, i_top_rej_77_85)
-    Containers["inc_top_77_77"].Add(i_top_lep_77_77, i_top_j1_77_77, i_top_j2_77_77, i_top_rej_77_77)
-    Containers["inc_top_77_70"].Add(i_top_lep_77_70, i_top_j1_77_70, i_top_j2_77_70, i_top_rej_77_70)
-    Containers["inc_top_77_60"].Add(i_top_lep_77_60, i_top_j1_77_60, i_top_j2_77_60, i_top_rej_77_60)
-    Containers["inc_top_77_0" ].Add(i_top_lep_77_0 , i_top_j1_77_0 , i_top_j2_77_0 , i_top_rej_77_0 )
-    
-    Containers["inc_top_70_85"].Add(i_top_lep_70_85, i_top_j1_70_85, i_top_j2_70_85, i_top_rej_70_85)
-    Containers["inc_top_70_77"].Add(i_top_lep_70_77, i_top_j1_70_77, i_top_j2_70_77, i_top_rej_70_77)
-    Containers["inc_top_70_70"].Add(i_top_lep_70_70, i_top_j1_70_70, i_top_j2_70_70, i_top_rej_70_70)
-    Containers["inc_top_70_60"].Add(i_top_lep_70_60, i_top_j1_70_60, i_top_j2_70_60, i_top_rej_70_60)
-    Containers["inc_top_70_0" ].Add(i_top_lep_70_0 , i_top_j1_70_0 , i_top_j2_70_0 , i_top_rej_70_0 )
-    
-    Containers["inc_top_60_85"].Add(i_top_lep_60_85, i_top_j1_60_85, i_top_j2_60_85, i_top_rej_60_85)
-    Containers["inc_top_60_77"].Add(i_top_lep_60_77, i_top_j1_60_77, i_top_j2_60_77, i_top_rej_60_77)
-    Containers["inc_top_60_70"].Add(i_top_lep_60_70, i_top_j1_60_70, i_top_j2_60_70, i_top_rej_60_70)
-    Containers["inc_top_60_60"].Add(i_top_lep_60_60, i_top_j1_60_60, i_top_j2_60_60, i_top_rej_60_60)
-    Containers["inc_top_60_0" ].Add(i_top_lep_60_0 , i_top_j1_60_0 , i_top_j2_60_0 , i_top_rej_60_0 )
+    Containers["inc_top_85_85"].Add(i_top_lep_85_85, i_top_j1_85_85, i_top_j2_85_85, i_top_rej_85_85, i_Zprime_85_85, ev.EventIndex)
+    Containers["inc_top_85_77"].Add(i_top_lep_85_77, i_top_j1_85_77, i_top_j2_85_77, i_top_rej_85_77, i_Zprime_85_77, ev.EventIndex)
+    Containers["inc_top_85_70"].Add(i_top_lep_85_70, i_top_j1_85_70, i_top_j2_85_70, i_top_rej_85_70, i_Zprime_85_70, ev.EventIndex)
+    Containers["inc_top_85_60"].Add(i_top_lep_85_60, i_top_j1_85_60, i_top_j2_85_60, i_top_rej_85_60, i_Zprime_85_60, ev.EventIndex)
+    Containers["inc_top_85_0" ].Add(i_top_lep_85_0 , i_top_j1_85_0 , i_top_j2_85_0 , i_top_rej_85_0 , i_Zprime_85_0 , ev.EventIndex)
+                                                                                                       
+    Containers["inc_top_77_85"].Add(i_top_lep_77_85, i_top_j1_77_85, i_top_j2_77_85, i_top_rej_77_85, i_Zprime_77_85, ev.EventIndex)
+    Containers["inc_top_77_77"].Add(i_top_lep_77_77, i_top_j1_77_77, i_top_j2_77_77, i_top_rej_77_77, i_Zprime_77_77, ev.EventIndex)
+    Containers["inc_top_77_70"].Add(i_top_lep_77_70, i_top_j1_77_70, i_top_j2_77_70, i_top_rej_77_70, i_Zprime_77_70, ev.EventIndex)
+    Containers["inc_top_77_60"].Add(i_top_lep_77_60, i_top_j1_77_60, i_top_j2_77_60, i_top_rej_77_60, i_Zprime_77_60, ev.EventIndex)
+    Containers["inc_top_77_0" ].Add(i_top_lep_77_0 , i_top_j1_77_0 , i_top_j2_77_0 , i_top_rej_77_0 , i_Zprime_77_0 , ev.EventIndex)
+                                                                                                     
+    Containers["inc_top_70_85"].Add(i_top_lep_70_85, i_top_j1_70_85, i_top_j2_70_85, i_top_rej_70_85, i_Zprime_70_85, ev.EventIndex)
+    Containers["inc_top_70_77"].Add(i_top_lep_70_77, i_top_j1_70_77, i_top_j2_70_77, i_top_rej_70_77, i_Zprime_70_77, ev.EventIndex)
+    Containers["inc_top_70_70"].Add(i_top_lep_70_70, i_top_j1_70_70, i_top_j2_70_70, i_top_rej_70_70, i_Zprime_70_70, ev.EventIndex)
+    Containers["inc_top_70_60"].Add(i_top_lep_70_60, i_top_j1_70_60, i_top_j2_70_60, i_top_rej_70_60, i_Zprime_70_60, ev.EventIndex)
+    Containers["inc_top_70_0" ].Add(i_top_lep_70_0 , i_top_j1_70_0 , i_top_j2_70_0 , i_top_rej_70_0 , i_Zprime_70_0 , ev.EventIndex)
+                                                                                                      
+    Containers["inc_top_60_85"].Add(i_top_lep_60_85, i_top_j1_60_85, i_top_j2_60_85, i_top_rej_60_85, i_Zprime_60_85, ev.EventIndex)
+    Containers["inc_top_60_77"].Add(i_top_lep_60_77, i_top_j1_60_77, i_top_j2_60_77, i_top_rej_60_77, i_Zprime_60_77, ev.EventIndex)
+    Containers["inc_top_60_70"].Add(i_top_lep_60_70, i_top_j1_60_70, i_top_j2_60_70, i_top_rej_60_70, i_Zprime_60_70, ev.EventIndex)
+    Containers["inc_top_60_60"].Add(i_top_lep_60_60, i_top_j1_60_60, i_top_j2_60_60, i_top_rej_60_60, i_Zprime_60_60, ev.EventIndex)
+    Containers["inc_top_60_0" ].Add(i_top_lep_60_0 , i_top_j1_60_0 , i_top_j2_60_0 , i_top_rej_60_0 , i_Zprime_60_0 , ev.EventIndex)
 
 
 
 if __name__ == '__main__':
     Containers = {}
+
+    Containers["Truth"] = Container("Truth")
     Containers["top_85_85"] = Container("85_85")
     Containers["top_85_77"] = Container("85_77")
     Containers["top_85_70"] = Container("85_70")
@@ -460,10 +491,11 @@ if __name__ == '__main__':
     File = "/home/tnom6927/Downloads/CustomAnalysisTopOutputTest/tttt/" 
     Ana = Analysis()
     Ana.ProjectName = "SingleLepton"
-    Ana.InputSample("4Tops", File)
+    Ana.InputSample("4Tops", {File : ["*"]})
     Ana.Event = Event
-    Ana.EventCache = True
+    Ana.EventCache = False
     Ana.DumpPickle = True
+    Ana.chnk = 100
     Ana.Launch()
     
     le = len(Ana)
@@ -471,9 +503,18 @@ if __name__ == '__main__':
     for i in Ana:
         SingleLeptonAnalysis(Containers, i)
         print(it, le) 
-        it +=1
+        it += 1 
 
-    
+    Tru = Containers["Truth"]
+    Tru.CalculateLumi(Tru)
+    for key in Containers:
+        Containers[key].MakeAllMass()
+        Containers[key].CalculateLumi(Tru)
+
+    PickleObject(Containers, "FullContainers") 
+
+
+
     def PlotMass(Cont, Title, OutDir):
         Plots = {}
         Plots["Style"] = "ATLAS"
@@ -485,15 +526,15 @@ if __name__ == '__main__':
         Plots["Title"] = Title
         Plots["Filename"] = Cont.WorkingPoint
         Plots["OutputDirectory"] = OutDir
+        Plots["ATLASLumi"] = Cont.Lumi
         TH = CombineTH1F(**Plots)
         
-        Cont.MakeAllMass()
-        P1 = {}
-        P1 |= Plots
-        P1["Title"] = "Reco-Leptonic"
-        P1["xData"] = Cont.lepT
-        P1 = TH1F(**P1)
-        P1.Compile()
+        #P1 = {}
+        #P1 |= Plots
+        #P1["Title"] = "Reco-Leptonic"
+        #P1["xData"] = Cont.lepT
+        #P1 = TH1F(**P1)
+        #P1.Compile()
 
         P2 = {}
         P2 |= Plots
@@ -517,7 +558,7 @@ if __name__ == '__main__':
         P4 = TH1F(**P4)
         P4.SaveFigure()
 
-        TH.Histograms = [P1, P2, P3]
+        TH.Histograms = [P2, P3]
         TH.SaveFigure()
 
 
@@ -570,5 +611,7 @@ if __name__ == '__main__':
     PlotMass(Containers["top_60_70"], "Mutually Exclusive Leptonically Matched Jets (70%) \n to two Hardest B-Tagged (60%) Jets", "./Plots/wrk60/")
     PlotMass(Containers["top_60_60"], "Mutually Exclusive Leptonically Matched Jets (60%) \n to two Hardest B-Tagged (60%) Jets", "./Plots/wrk60/")
     PlotMass(Containers["top_60_0" ], "Mutually Exclusive Leptonically Matched Jets (0%)  \n to two Hardest B-Tagged (60%) Jets" , "./Plots/wrk60/")
+ 
+    PlotMass(Containers["Truth" ], "Z' Expected from Truth matched Reconstructed Jets" , "./Plots/Truth/")
  
 

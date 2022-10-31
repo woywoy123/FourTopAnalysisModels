@@ -1,0 +1,50 @@
+
+Shorts:
+* Res-Lep: Resonance top decaying leptonically
+* Res-Had: Resonance top decaying hadronically
+* Spec-Lep: Spectator top decaying leptonically 
+* Spec-Had: Spectator top decaying hadronically
+
+
+-> Figure 1:
+a: Mass of Tops which originate from the Z' resonance (1.5 TeV)
+b: Mass of Z' derived from the tops in figure a.
+c: Mass of Spectator Tops
+d: Number of Tops found per event 
+e: Decay modes of tops involved
+f: PT Distribution for Tops undergoing different decay modes
+
+-> Figure 2:
+a: Average number of children produced - Stack Plot
+b: PT Distribution for children of tops - Stack Plot
+c: Reconstructed Invariant Top mass from Children - Superimposed
+d: DeltaR between pairs of children from a common top quark - Stack plot
+e: The DeltaR between the four vector of the top quark and its children i.e. how much do the children deviate from the original top trajectory. - Stack Plot
+
+-> Figure 3: (x) Not complete yet....
+a: Average number of Truth Jets / leptons in event
+
+a: Average Number of Truth Jets produced from Top (excluding leptonic decays)
+b: Average Number of Truth Jets formed from Top Children (excluding leptonic decays)
+c: Number of leptons produced per event, and associated jets (expected but not reality (gluons...) W + b -> l + nu_l + b)
+
+
+-> Figure 4: (x) Not Complete yet....
++Do as above but add deltaR between jet and truth jet 
+
+-> Figure 5: (x) Not Complete yet....
++ Do Bruce Analysis.
++ Selection criteria:
+~> Leptonic t: This is spectator 1
+~> 2 Hardest b-tagged jets: these correspond to the Z' daughter tops
+~> attach two other jets to each <somehow> (I use deltaR)
+~> You now have the Z' -> ttbar daughters
+~> Remaining jets are your 2nd spectators 
+~> Form M(Z')
+~> Fit fit M(Z') 
+
+-> Modifications to Bruce's Proposal:
+~> Jets have different levels of b-tagging (Working points) (85, 77, 70, 60, 0)
+~> Match the emitted lepton to any jet nearby for all working points, regardless of PT hardness
+~> Remove the added jet from jet collection 
+~> Select two hardest jets (as before) but at different Working points. i.e. jj_{85, 77, 70, 60}_at_jl_{85, 77, 70, 60, 0}
